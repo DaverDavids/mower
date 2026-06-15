@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "fileType": "PCB_REVERSE_ENGINEERING_AUTOSAVE",
+  "savedAt": "2026-06-12T17:52:23.657Z",
+  "view": {
+    "currentView": "overlay",
+    "viewScale": 0.25,
+    "cameraWorldCenter": {
+      "x": -1613.8640419810708,
+      "y": -3734.2634569036336
+    },
+    "showBothLayers": true,
+    "selectedDrawingLayer": "top"
+  },
+  "images": {
+    "top": {
+      "name": "mower-front.jpg",
+      "width": 5837,
+      "height": 3027,
+      "filePath": "images/mower-front.jpg",
+      "x": -1990.4326484788721,
+      "y": -3158.9773774538135,
+      "scale": 1,
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "bottom": {
+      "name": "mower-back.jpg",
+      "width": 5837,
+      "height": 3027,
+      "filePath": "images/mower-back.jpg",
+      "x": -1979.488966734515,
+      "y": -3154.762871144777,
+      "scale": 1,
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "extra": [],
+    "layerOrder": [
+      0,
+      1
+    ]
+  },
+  "projectDirectoryName": "RoboMoMo",
+  "drawing": {
+    "drawingStrokes": [],
+    "vias": [],
+    "tracesTop": [],
+    "tracesBottom": [],
+    "componentsTop": [],
+    "componentsBottom": [],
+    "grounds": [],
+    "powers": []
+  },
+  "powerBuses": [
+    {
+      "id": "powerbus-default",
+      "name": "+5VDC",
+      "voltage": "+5",
+      "color": "#ff0000"
+    }
+  ],
+  "groundBuses": [
+    {
+      "id": "groundbus-circuit",
+      "name": "GND",
+      "color": "#000000"
+    }
+  ],
+  "groups": [],
+  "pointIdCounter": 1,
+  "designatorCounters": {},
+  "autoAssignDesignators": true,
+  "useGlobalDesignatorCounters": false,
+  "traceColors": {
+    "top": "#AA4499",
+    "bottom": "#F781BF"
+  },
+  "traceSizes": {
+    "top": 6,
+    "bottom": 6
+  },
+  "padColors": {
+    "top": "#0072B2",
+    "bottom": "#56B4E9"
+  },
+  "padSizes": {
+    "top": 18,
+    "bottom": 18
+  },
+  "componentColors": {
+    "top": "#6A3D9A",
+    "bottom": "#9467BD"
+  },
+  "componentSizes": {
+    "top": 18,
+    "bottom": 18
+  },
+  "testPointColors": {
+    "top": "#FFFF00",
+    "bottom": "#FFFF00"
+  },
+  "testPointSizes": {
+    "top": 15,
+    "bottom": 15
+  },
+  "componentConnectionColor": "#E69F00",
+  "componentConnectionSize": 4,
+  "toolLayerDefaults": {
+    "trace": "top",
+    "pad": "top",
+    "testPoint": "top",
+    "component": "top"
+  },
+  "toolSettings": {
+    "trace": {
+      "color": "#AA4499",
+      "size": 8
+    },
+    "via": {
+      "color": "#2CA02C",
+      "size": 15
+    },
+    "pad": {
+      "color": "#0072B2",
+      "size": 10
+    },
+    "component": {
+      "color": "#6A3D9A",
+      "size": 35
+    },
+    "ground": {
+      "color": "#000000",
+      "size": 25
+    },
+    "power": {
+      "color": "#ff0000",
+      "size": 25
+    }
+  },
+  "locks": {
+    "areImagesLocked": false,
+    "areViasLocked": false,
+    "arePadsLocked": false,
+    "areTracesLocked": false,
+    "areComponentsLocked": false,
+    "areGroundNodesLocked": false,
+    "arePowerNodesLocked": false
+  },
+  "visibility": {
+    "showViasLayer": true,
+    "showTopPadsLayer": true,
+    "showBottomPadsLayer": true,
+    "showTopTracesLayer": true,
+    "showBottomTracesLayer": true,
+    "showTopComponents": true,
+    "showBottomComponents": true,
+    "showPowerLayer": true,
+    "showGroundLayer": true,
+    "showConnectionsLayer": true,
+    "showTraceCornerDots": false,
+    "showTraceEndDots": true,
+    "componentIconDisplay": "both",
+    "netHighlightDimmingLevel": 70,
+    "showICPinNumbers": true,
+    "showICPinNames": true,
+    "pinNumberPosition": "upper-right",
+    "pinNumberFontSize": 11
+  },
+  "autoSave": {
+    "enabled": true,
+    "interval": 5,
+    "baseName": "RoboMoMo"
+  },
+  "projectInfo": {
+    "name": "RoboMoMo"
+  },
+  "aiSettings": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash"
+  },
+  "projectNotes": [],
+  "symptomColumns": [
+    "Item",
+    "Symptom"
+  ],
+  "noteColumns": [
+    "Item",
+    "Notes"
+  ],
+  "projectMetadata": {
+    "productName": "Gardena Sileno Minimo motherboard",
+    "modelNumber": "",
+    "manufacturer": "",
+    "dateManufactured": "2026-06-12"
+  },
+  "troubleshootingResults": null,
+  "dismissedErrors": [],
+  "nodeProperties": {},
+  "homeViews": {
+    "0": {
+      "pcbReferenceX": -1990.4326484788721,
+      "pcbReferenceY": -3158.9773774538135,
+      "x": 0,
+      "y": 0,
+      "zoom": 2.674830134476799,
+      "viewRotation": 0,
+      "viewFlipX": false,
+      "isBottomView": false,
+      "transparency": 45,
+      "showTopImage": true,
+      "showBottomImage": true,
+      "showViasLayer": true,
+      "showTopTracesLayer": true,
+      "showBottomTracesLayer": true,
+      "showTopPadsLayer": true,
+      "showBottomPadsLayer": true,
+      "showTopTestPointsLayer": true,
+      "showBottomTestPointsLayer": true,
+      "showTopComponents": true,
+      "showBottomComponents": true,
+      "showPowerLayer": true,
+      "showGroundLayer": true,
+      "showConnectionsLayer": true
+    }
+  },
+  "toolInstances": {
+    "via": {
+      "id": "via",
+      "name": "Via",
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "padTop": {
+      "id": "padTop",
+      "name": "Pad (Top)",
+      "color": "#0072B2",
+      "size": 10
+    },
+    "padBottom": {
+      "id": "padBottom",
+      "name": "Pad (Bottom)",
+      "color": "#56B4E9",
+      "size": 10
+    },
+    "testPointTop": {
+      "id": "testPointTop",
+      "name": "Test Point (Top)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "testPointBottom": {
+      "id": "testPointBottom",
+      "name": "Test Point (Bottom)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "traceTop": {
+      "id": "traceTop",
+      "name": "Trace (Top)",
+      "color": "#AA4499",
+      "size": 8
+    },
+    "traceBottom": {
+      "id": "traceBottom",
+      "name": "Trace (Bottom)",
+      "color": "#F781BF",
+      "size": 8
+    },
+    "componentTop": {
+      "id": "componentTop",
+      "name": "Component (Top)",
+      "color": "#6A3D9A",
+      "size": 35
+    },
+    "componentBottom": {
+      "id": "componentBottom",
+      "name": "Component (Bottom)",
+      "color": "#9467BD",
+      "size": 35
+    },
+    "power": {
+      "id": "power",
+      "name": "Power",
+      "color": "#ff0000",
+      "size": 25
+    },
+    "ground": {
+      "id": "ground",
+      "name": "Ground",
+      "color": "#000000",
+      "size": 25
+    }
+  },
+  "projectStats": {
+    "sessionCount": 1,
+    "lastPromptDate": null,
+    "lastPromptSession": 0,
+    "totalWorkTimeMs": 90000,
+    "donatedDate": null,
+    "declinedDate": null,
+    "bomsGenerated": 0,
+    "netlistsGenerated": 0,
+    "componentsIdentified": 0,
+    "schematicsGenerated": 0,
+    "troubleshootingAnalyses": 0,
+    "explainCircuitRuns": 0,
+    "datasheetExtractions": 0,
+    "measurementRuns": 0,
+    "errorCheckRuns": 0
+  }
+}
