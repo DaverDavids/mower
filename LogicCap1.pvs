@@ -1,3 +1,9 @@
+[General]
+decode_signals=0
+generated_signals=0
+views=1
+meta_objs=0
+
 [D2]
 name=D2
 enabled=true
@@ -20,56 +26,56 @@ conversion_type=0
 conv_options=0
 
 [D5]
-name=DATA
+name=D5
 enabled=true
 color=4294277376
 conversion_type=0
 conv_options=0
 
 [D6]
-name=EN
+name=D6
 enabled=true
 color=4293776384
 conversion_type=0
 conv_options=0
 
 [D7]
-name=F3
+name=D7
 enabled=true
 color=4285780502
 conversion_type=0
 conv_options=0
 
 [D8]
-name=F2
+name=D8
 enabled=true
 color=4281623972
 conversion_type=0
 conv_options=0
 
 [D9]
-name=M3
+name=D9
 enabled=true
 color=4285878395
 conversion_type=0
 conv_options=0
 
 [D10]
-name=M2
+name=D10
 enabled=true
 color=4287138437
 conversion_type=0
 conv_options=0
 
 [D11]
-name=M1
+name=D11
 enabled=true
 color=4293848812
 conversion_type=0
 conv_options=0
 
 [D12]
-name=F1
+name=D12
 enabled=true
 color=4279638298
 conversion_type=0
@@ -77,35 +83,35 @@ conv_options=0
 
 [D13]
 name=D13
-enabled=false
+enabled=true
 color=4287582722
 conversion_type=0
 conv_options=0
 
 [D14]
 name=D14
-enabled=false
+enabled=true
 color=4291559424
 conversion_type=0
 conv_options=0
 
 [D15]
 name=D15
-enabled=false
+enabled=true
 color=4294277376
 conversion_type=0
 conv_options=0
 
 [D16]
 name=D16
-enabled=false
+enabled=true
 color=4293776384
 conversion_type=0
 conv_options=0
 
 [D17]
 name=D17
-enabled=false
+enabled=true
 color=4285780502
 conversion_type=0
 conv_options=0
@@ -222,19 +228,12 @@ color=4287582722
 conversion_type=0
 conv_options=0
 
-[General]
-decode_signals=0
-generated_signals=0
-views=1
-meta_objs=1
-
 [view0]
-scale=0.020438491562729078
-v_offset=-102
-splitter_state=@ByteArray(\0\0\0\xff\0\0\0\x1\0\0\0\x2\0\0\0M\0\0\x5W\x1\0\0\0\x1\x1\0\0\0\x1\0)
-segment_display_mode=3
-offset=22 serialization::archive 14 0 0 0 0 4 66207118 5141572 43482976 56811081 98120951 0 1 0 6
-zero_offset=22 serialization::archive 14 0 0 0 0 0 0 0 0 0 0 0 0 0 6
+scale=0.001
+v_offset=0
+splitter_state=@ByteArray(\0\0\0\xff\0\0\0\x1\0\0\0\x2\0\0\0\x45\0\0\x5_\x1\0\0\0\x1\x1\0\0\0\x1\0)
+segment_display_mode=1
+offset=22 serialization::archive 14 0 0 0 0 0 0 0 0 0 0 0 0 0 6
 D2\trace_height=26
 D3\trace_height=26
 D4\trace_height=26
