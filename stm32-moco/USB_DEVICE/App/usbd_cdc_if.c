@@ -11,7 +11,11 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-#include "usb_cdc_comms.h"
+/* Path-qualified so the compiler finds it regardless of include search order.
+   Core/Inc is always added to the project include path by CubeMX, but
+   USB_DEVICE/App is a separate compilation group that may resolve headers
+   differently. The explicit path guarantees the correct file is found. */
+#include "../../Core/Inc/usb_cdc_comms.h"
 /* USER CODE END INCLUDE */
 
 uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
