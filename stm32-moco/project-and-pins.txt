@@ -1,0 +1,70 @@
+# STM32 Motor Controller (stm32-moco) - Project & Pin Reference
+# Target: STM32F103C8T6 (Blue Pill)
+# IDE: STM32CubeIDE or PlatformIO (Arduino framework)
+# Toolchain: arm-none-eabi-gcc
+
+## Project Purpose
+# Low-level motor controller for the autonomous mower.
+# Receives serial commands from the Atomic Pi (ROS 2 base_controller node)
+# and drives dual DC motors via H-bridge PWM.
+# Returns wheel encoder tick counts and distance estimates.
+
+## Communication
+# UART1 (USB via FTDI or direct USB-serial adapter) - to Atomic Pi
+#   Baud: 115200, 8N1
+#   RX: PA10
+#   TX: PA9
+#   Command format in:  "L:<val>,R:<val>\n"  (val: -255 to 255, 0=stop)
+#   Command format in:  "ESTOP\n"             (immediate hard stop)
+#   Command format in:  "DEBUG:ON\n" or "DEBUG:OFF\n"
+#   Command format in:  "PING\n"              (returns "PONG\n")
+#   Response format:    "ENC:L<ticks>,R<ticks>,D<mm>\n" (sent at 10 Hz)
+#   Response format:    "DBG:<message>\n"     (if debug mode on)
+#   Response format:    "ERR:<message>\n"
+
+## Watchdog / Safety
+# If no valid command received within WATCHDOG_MS (500ms), motors stop.
+# On startup, motors are off by default (SAFE state).
+
+## Pin Assignments
+
+### Left Motor H-Bridge (e.g., L298N or TB6612)
+# PWM speed:   PA0  (TIM2_CH1) - Timer 2, Channel 1
+# Direction A: PB0  (GPIO OUT) - IN1
+# Direction B: PB1  (GPIO OUT) - IN2
+
+### Right Motor H-Bridge
+# PWM speed:   PA1  (TIM2_CH2) - Timer 2, Channel 2
+# Direction A: PB10 (GPIO OUT) - IN3
+# Direction B: PB11 (GPIO OUT) - IN4
+
+### Left Wheel Encoder (Quadrature)
+# Channel A:   PA6  (TIM3_CH1) - Timer 3 encoder mode
+# Channel B:   PA7  (TIM3_CH2) - Timer 3 encoder mode
+
+### Right Wheel Encoder (Quadrature)
+# Channel A:   PB6  (TIM4_CH1) - Timer 4 encoder mode
+# Channel B:   PB7  (TIM4_CH2) - Timer 4 encoder mode
+
+### Status / Debug LEDs
+# Onboard LED: PC13 (active LOW) - heartbeat blink
+# Fault LED:   PB12 (GPIO OUT, active HIGH) - estop/watchdog fault indicator
+
+### UART (to Atomic Pi)
+# TX: PA9   (USART1_TX)
+# RX: PA10  (USART1_RX)
+
+## Physical Notes
+# STM32 GPIO max source/sink: 25mA per pin. Use driver ICs for H-bridge logic.
+# Encoder inputs should have 100nF bypass caps to GND on each signal pin.
+# Ensure common GND between STM32 and motor driver.
+# Motor power supply ISOLATED from STM32 3.3V logic rail.
+# BOOT0 pin: tie to GND for normal operation. Pull HIGH only for DFU flashing.
+
+## Wheel / Distance Calibration
+# ENCODER_PPR         = 20    (pulses per revolution, single channel)
+# ENCODER_PPR_QUAD    = 80    (x4 quadrature = 4 * 20)
+# WHEEL_DIAMETER_MM   = 200   (adjust to your actual wheel)
+# WHEEL_CIRCUMFERENCE = PI * WHEEL_DIAMETER_MM
+# MM_PER_TICK         = WHEEL_CIRCUMFERENCE / ENCODER_PPR_QUAD
+# These are defines in moco_config.h - tune before first real run.
