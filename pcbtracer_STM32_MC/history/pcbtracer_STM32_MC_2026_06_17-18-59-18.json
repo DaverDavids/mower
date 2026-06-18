@@ -1,0 +1,529 @@
+{
+  "version": 1,
+  "fileType": "PCB_REVERSE_ENGINEERING_AUTOSAVE",
+  "savedAt": "2026-06-17T22:59:18.047Z",
+  "view": {
+    "currentView": "overlay",
+    "viewScale": 0.25,
+    "cameraWorldCenter": {
+      "x": 451.83882467458534,
+      "y": 200.136639116266
+    },
+    "showBothLayers": true,
+    "selectedDrawingLayer": "top"
+  },
+  "images": {
+    "top": {
+      "name": "PXL_20260617_213709454.LONG_EXPOSURE.jpg",
+      "width": 2986,
+      "height": 2610,
+      "filePath": "images/PXL_20260617_213709454.LONG_EXPOSURE.jpg",
+      "x": -1588.82385976142,
+      "y": -407.61552530349087,
+      "scale": 1,
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "bottom": {
+      "name": "mower-mobo-front.png",
+      "width": 3660,
+      "height": 1889,
+      "filePath": "images/mower-mobo-front.png",
+      "x": -2204.1611753254147,
+      "y": -171.863360883734,
+      "scale": 1.7800000000000007,
+      "rotation": 180.2,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "extra": [],
+    "layerOrder": [
+      0,
+      1
+    ]
+  },
+  "projectDirectoryName": "pcbtracer_STM32_MC",
+  "drawing": {
+    "drawingStrokes": [
+      {
+        "id": "1781736565515-trace-autofinalize",
+        "points": [
+          {
+            "x": -671.7585858710563,
+            "y": -131.16710809327833
+          },
+          {
+            "x": -1149.1891858710562,
+            "y": -17.033808093278594
+          }
+        ],
+        "color": "#56B4E9",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "points": [
+          {
+            "x": -835.7247150891633,
+            "y": -172.9623443072703
+          },
+          {
+            "x": -903.2401150891633,
+            "y": 249.81285569272973
+          },
+          {
+            "x": -1174.9093150891633,
+            "y": 254.63535569272972
+          }
+        ],
+        "color": "#56B4E9",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "points": [
+          {
+            "x": -675.5318438957477,
+            "y": -216.0450754458161
+          },
+          {
+            "x": -896.5644438957477,
+            "y": 349.26262455418373
+          },
+          {
+            "x": -1192.6142438957477,
+            "y": 343.90432455418386
+          }
+        ],
+        "color": "#BCBD22",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736930239-trace-autofinalize",
+        "points": [
+          {
+            "x": -845.6599438957477,
+            "y": -44.57737544581619
+          },
+          {
+            "x": -1168.5016438957477,
+            "y": 81.34432455418369
+          }
+        ],
+        "color": "#BCBD22",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736953170-trace-autofinalize",
+        "points": [
+          {
+            "x": -680.8901438957478,
+            "y": -41.89817544581615
+          },
+          {
+            "x": -1159.1244438957476,
+            "y": 169.7573245541837
+          }
+        ],
+        "color": "#AA4499",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "points": [
+          {
+            "x": -841.6412438957477,
+            "y": -261.59127544581605
+          },
+          {
+            "x": -974.2608358024692,
+            "y": 424.27981001371745
+          },
+          {
+            "x": -1179.2183358024693,
+            "y": 425.61941001371747
+          }
+        ],
+        "color": "#AA4499",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      }
+    ],
+    "vias": [],
+    "tracesTop": [
+      {
+        "id": "1781736565515-trace-autofinalize",
+        "x1": -671.7585858710563,
+        "y1": -131.16710809327833,
+        "x2": -1149.1891858710562,
+        "y2": -17.033808093278594,
+        "size": 8,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "x1": -835.7247150891633,
+        "y1": -172.9623443072703,
+        "x2": -903.2401150891633,
+        "y2": 249.81285569272973,
+        "size": 8,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "x1": -903.2401150891633,
+        "y1": 249.81285569272973,
+        "x2": -1174.9093150891633,
+        "y2": 254.63535569272972,
+        "size": 8,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "x1": -675.5318438957477,
+        "y1": -216.0450754458161,
+        "x2": -896.5644438957477,
+        "y2": 349.26262455418373,
+        "size": 8,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "x1": -896.5644438957477,
+        "y1": 349.26262455418373,
+        "x2": -1192.6142438957477,
+        "y2": 343.90432455418386,
+        "size": 8,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736930239-trace-autofinalize",
+        "x1": -845.6599438957477,
+        "y1": -44.57737544581619,
+        "x2": -1168.5016438957477,
+        "y2": 81.34432455418369,
+        "size": 8,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736953170-trace-autofinalize",
+        "x1": -680.8901438957478,
+        "y1": -41.89817544581615,
+        "x2": -1159.1244438957476,
+        "y2": 169.7573245541837,
+        "size": 8,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "x1": -841.6412438957477,
+        "y1": -261.59127544581605,
+        "x2": -974.2608358024692,
+        "y2": 424.27981001371745,
+        "size": 8,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "x1": -974.2608358024692,
+        "y1": 424.27981001371745,
+        "x2": -1179.2183358024693,
+        "y2": 425.61941001371747,
+        "size": 8,
+        "color": "#AA4499"
+      }
+    ],
+    "tracesBottom": [],
+    "componentsTop": [],
+    "componentsBottom": [],
+    "grounds": [],
+    "powers": []
+  },
+  "powerBuses": [
+    {
+      "id": "powerbus-default",
+      "name": "+5VDC",
+      "voltage": "+5",
+      "color": "#ff0000"
+    }
+  ],
+  "groundBuses": [
+    {
+      "id": "groundbus-circuit",
+      "name": "GND",
+      "color": "#000000"
+    }
+  ],
+  "groups": [],
+  "pointIdCounter": 1,
+  "designatorCounters": {},
+  "autoAssignDesignators": true,
+  "useGlobalDesignatorCounters": false,
+  "traceColors": {
+    "top": "#AA4499",
+    "bottom": "#F781BF"
+  },
+  "traceSizes": {
+    "top": 8,
+    "bottom": 6
+  },
+  "padColors": {
+    "top": "#0072B2",
+    "bottom": "#56B4E9"
+  },
+  "padSizes": {
+    "top": 18,
+    "bottom": 18
+  },
+  "componentColors": {
+    "top": "#6A3D9A",
+    "bottom": "#9467BD"
+  },
+  "componentSizes": {
+    "top": 35,
+    "bottom": 18
+  },
+  "testPointColors": {
+    "top": "#FFFF00",
+    "bottom": "#FFFF00"
+  },
+  "testPointSizes": {
+    "top": 15,
+    "bottom": 15
+  },
+  "componentConnectionColor": "#E69F00",
+  "componentConnectionSize": 4,
+  "toolLayerDefaults": {
+    "trace": "top",
+    "pad": "top",
+    "testPoint": "top",
+    "component": "top"
+  },
+  "toolSettings": {
+    "trace": {
+      "color": "#AA4499",
+      "size": 8
+    },
+    "via": {
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "pad": {
+      "color": "#0072B2",
+      "size": 10
+    },
+    "component": {
+      "color": "#6A3D9A",
+      "size": 35
+    },
+    "ground": {
+      "color": "#000000",
+      "size": 25
+    },
+    "power": {
+      "color": "#ff0000",
+      "size": 25
+    }
+  },
+  "locks": {
+    "areImagesLocked": false,
+    "areViasLocked": false,
+    "arePadsLocked": false,
+    "areTracesLocked": false,
+    "areComponentsLocked": false,
+    "areGroundNodesLocked": false,
+    "arePowerNodesLocked": false
+  },
+  "visibility": {
+    "showViasLayer": true,
+    "showTopPadsLayer": true,
+    "showBottomPadsLayer": true,
+    "showTopTracesLayer": true,
+    "showBottomTracesLayer": true,
+    "showTopTestPointsLayer": true,
+    "showBottomTestPointsLayer": true,
+    "showTopComponents": true,
+    "showBottomComponents": true,
+    "showPowerLayer": true,
+    "showGroundLayer": true,
+    "showConnectionsLayer": true,
+    "showTraceCornerDots": false,
+    "showTraceEndDots": true,
+    "componentIconDisplay": "both",
+    "netHighlightDimmingLevel": 70,
+    "showICPinNumbers": true,
+    "showICPinNames": true,
+    "pinNumberPosition": "upper-right",
+    "pinNumberFontSize": 11,
+    "transparency": 51,
+    "isBottomView": false
+  },
+  "autoSave": {
+    "enabled": true,
+    "interval": 5,
+    "baseName": "pcbtracer_STM32_MC"
+  },
+  "projectInfo": {
+    "name": "pcbtracer_STM32_MC"
+  },
+  "aiSettings": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash"
+  },
+  "projectNotes": [],
+  "symptomColumns": [
+    "Item",
+    "Symptom"
+  ],
+  "noteColumns": [
+    "Item",
+    "Notes"
+  ],
+  "projectMetadata": {
+    "productName": "STM32_MC",
+    "modelNumber": "",
+    "manufacturer": "",
+    "dateManufactured": "2026-06-17"
+  },
+  "troubleshootingResults": null,
+  "dismissedErrors": [],
+  "nodeProperties": {},
+  "homeViews": {
+    "0": {
+      "pcbReferenceX": 0,
+      "pcbReferenceY": 0,
+      "cameraWorldCenterX": 0,
+      "cameraWorldCenterY": 0,
+      "x": 0,
+      "y": 0,
+      "zoom": 0.22573435504469988,
+      "viewRotation": 0,
+      "viewFlipX": false,
+      "isBottomView": false,
+      "transparency": 0,
+      "showTopImage": true,
+      "showBottomImage": true,
+      "showViasLayer": true,
+      "showTopTracesLayer": true,
+      "showBottomTracesLayer": true,
+      "showTopPadsLayer": true,
+      "showBottomPadsLayer": true,
+      "showTopTestPointsLayer": true,
+      "showBottomTestPointsLayer": true,
+      "showTopComponents": true,
+      "showBottomComponents": true,
+      "showPowerLayer": true,
+      "showGroundLayer": true,
+      "showConnectionsLayer": true
+    }
+  },
+  "toolInstances": {
+    "via": {
+      "id": "via",
+      "name": "Via",
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "padTop": {
+      "id": "padTop",
+      "name": "Pad (Top)",
+      "color": "#0072B2",
+      "size": 10
+    },
+    "padBottom": {
+      "id": "padBottom",
+      "name": "Pad (Bottom)",
+      "color": "#56B4E9",
+      "size": 10
+    },
+    "testPointTop": {
+      "id": "testPointTop",
+      "name": "Test Point (Top)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "testPointBottom": {
+      "id": "testPointBottom",
+      "name": "Test Point (Bottom)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "traceTop": {
+      "id": "traceTop",
+      "name": "Trace (Top)",
+      "color": "#AA4499",
+      "size": 8
+    },
+    "traceBottom": {
+      "id": "traceBottom",
+      "name": "Trace (Bottom)",
+      "color": "#F781BF",
+      "size": 8
+    },
+    "componentTop": {
+      "id": "componentTop",
+      "name": "Component (Top)",
+      "color": "#6A3D9A",
+      "size": 35
+    },
+    "componentBottom": {
+      "id": "componentBottom",
+      "name": "Component (Bottom)",
+      "color": "#9467BD",
+      "size": 35
+    },
+    "power": {
+      "id": "power",
+      "name": "Power",
+      "color": "#ff0000",
+      "size": 25
+    },
+    "ground": {
+      "id": "ground",
+      "name": "Ground",
+      "color": "#000000",
+      "size": 25
+    }
+  },
+  "projectStats": {
+    "sessionCount": 1,
+    "lastPromptDate": null,
+    "lastPromptSession": 0,
+    "totalWorkTimeMs": 1680000,
+    "donatedDate": null,
+    "declinedDate": null,
+    "bomsGenerated": 0,
+    "netlistsGenerated": 0,
+    "componentsIdentified": 0,
+    "schematicsGenerated": 0,
+    "troubleshootingAnalyses": 0,
+    "explainCircuitRuns": 0,
+    "datasheetExtractions": 0,
+    "measurementRuns": 0,
+    "errorCheckRuns": 0
+  }
+}

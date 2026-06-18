@@ -1,0 +1,369 @@
+{
+  "version": 1,
+  "fileType": "PCB_REVERSE_ENGINEERING_AUTOSAVE",
+  "savedAt": "2026-06-17T22:49:18.032Z",
+  "view": {
+    "currentView": "overlay",
+    "viewScale": 0.62208,
+    "cameraWorldCenter": {
+      "x": -87.64887965783367,
+      "y": 290.7199176751749
+    },
+    "showBothLayers": true,
+    "selectedDrawingLayer": "top"
+  },
+  "images": {
+    "top": {
+      "name": "PXL_20260617_213709454.LONG_EXPOSURE.jpg",
+      "width": 2986,
+      "height": 2610,
+      "filePath": "images/PXL_20260617_213709454.LONG_EXPOSURE.jpg",
+      "x": -661.5106738903636,
+      "y": -39.58011721021245,
+      "scale": 1,
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "bottom": null,
+    "extra": [],
+    "layerOrder": [
+      0,
+      1
+    ]
+  },
+  "projectDirectoryName": "pcbtracer_STM32_MC",
+  "drawing": {
+    "drawingStrokes": [
+      {
+        "id": "1781736551401-trace-autofinalize",
+        "points": [
+          {
+            "x": 249.1245,
+            "y": 328.4964
+          },
+          {
+            "x": -233.1286,
+            "y": 542.2953
+          }
+        ],
+        "color": "#0072B2",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736557079-trace-autofinalize",
+        "points": [
+          {
+            "x": 88.3735,
+            "y": 280.2711
+          },
+          {
+            "x": -118.9953,
+            "y": 444.2372
+          }
+        ],
+        "color": "#0072B2",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      }
+    ],
+    "vias": [],
+    "tracesTop": [
+      {
+        "id": "1781736551401-trace-autofinalize",
+        "x1": 249.1245,
+        "y1": 328.4964,
+        "x2": -233.1286,
+        "y2": 542.2953,
+        "size": 8,
+        "color": "#0072B2"
+      },
+      {
+        "id": "1781736557079-trace-autofinalize",
+        "x1": 88.3735,
+        "y1": 280.2711,
+        "x2": -118.9953,
+        "y2": 444.2372,
+        "size": 8,
+        "color": "#0072B2"
+      }
+    ],
+    "tracesBottom": [],
+    "componentsTop": [],
+    "componentsBottom": [],
+    "grounds": [],
+    "powers": []
+  },
+  "powerBuses": [
+    {
+      "id": "powerbus-default",
+      "name": "+5VDC",
+      "voltage": "+5",
+      "color": "#ff0000"
+    }
+  ],
+  "groundBuses": [
+    {
+      "id": "groundbus-circuit",
+      "name": "GND",
+      "color": "#000000"
+    }
+  ],
+  "groups": [],
+  "pointIdCounter": 1,
+  "designatorCounters": {},
+  "autoAssignDesignators": true,
+  "useGlobalDesignatorCounters": false,
+  "traceColors": {
+    "top": "#0072B2",
+    "bottom": "#F781BF"
+  },
+  "traceSizes": {
+    "top": 8,
+    "bottom": 6
+  },
+  "padColors": {
+    "top": "#0072B2",
+    "bottom": "#56B4E9"
+  },
+  "padSizes": {
+    "top": 18,
+    "bottom": 18
+  },
+  "componentColors": {
+    "top": "#6A3D9A",
+    "bottom": "#9467BD"
+  },
+  "componentSizes": {
+    "top": 35,
+    "bottom": 18
+  },
+  "testPointColors": {
+    "top": "#FFFF00",
+    "bottom": "#FFFF00"
+  },
+  "testPointSizes": {
+    "top": 15,
+    "bottom": 15
+  },
+  "componentConnectionColor": "#E69F00",
+  "componentConnectionSize": 4,
+  "toolLayerDefaults": {
+    "trace": "top",
+    "pad": "top",
+    "testPoint": "top",
+    "component": "top"
+  },
+  "toolSettings": {
+    "trace": {
+      "color": "#0072B2",
+      "size": 8
+    },
+    "via": {
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "pad": {
+      "color": "#0072B2",
+      "size": 10
+    },
+    "component": {
+      "color": "#6A3D9A",
+      "size": 35
+    },
+    "ground": {
+      "color": "#000000",
+      "size": 25
+    },
+    "power": {
+      "color": "#ff0000",
+      "size": 25
+    }
+  },
+  "locks": {
+    "areImagesLocked": false,
+    "areViasLocked": false,
+    "arePadsLocked": false,
+    "areTracesLocked": false,
+    "areComponentsLocked": false,
+    "areGroundNodesLocked": false,
+    "arePowerNodesLocked": false
+  },
+  "visibility": {
+    "showViasLayer": true,
+    "showTopPadsLayer": true,
+    "showBottomPadsLayer": true,
+    "showTopTracesLayer": true,
+    "showBottomTracesLayer": true,
+    "showTopTestPointsLayer": true,
+    "showBottomTestPointsLayer": true,
+    "showTopComponents": true,
+    "showBottomComponents": true,
+    "showPowerLayer": true,
+    "showGroundLayer": true,
+    "showConnectionsLayer": true,
+    "showTraceCornerDots": false,
+    "showTraceEndDots": true,
+    "componentIconDisplay": "both",
+    "netHighlightDimmingLevel": 70,
+    "showICPinNumbers": true,
+    "showICPinNames": true,
+    "pinNumberPosition": "upper-right",
+    "pinNumberFontSize": 11,
+    "transparency": 0,
+    "isBottomView": false
+  },
+  "autoSave": {
+    "enabled": true,
+    "interval": 5,
+    "baseName": "pcbtracer_STM32_MC"
+  },
+  "projectInfo": {
+    "name": "pcbtracer_STM32_MC"
+  },
+  "aiSettings": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash"
+  },
+  "projectNotes": [],
+  "symptomColumns": [
+    "Item",
+    "Symptom"
+  ],
+  "noteColumns": [
+    "Item",
+    "Notes"
+  ],
+  "projectMetadata": {
+    "productName": "STM32_MC",
+    "modelNumber": "",
+    "manufacturer": "",
+    "dateManufactured": "2026-06-17"
+  },
+  "troubleshootingResults": null,
+  "dismissedErrors": [],
+  "nodeProperties": {},
+  "homeViews": {
+    "0": {
+      "pcbReferenceX": 0,
+      "pcbReferenceY": 0,
+      "cameraWorldCenterX": 0,
+      "cameraWorldCenterY": 0,
+      "x": 0,
+      "y": 0,
+      "zoom": 0.22573435504469988,
+      "viewRotation": 0,
+      "viewFlipX": false,
+      "isBottomView": false,
+      "transparency": 0,
+      "showTopImage": true,
+      "showBottomImage": true,
+      "showViasLayer": true,
+      "showTopTracesLayer": true,
+      "showBottomTracesLayer": true,
+      "showTopPadsLayer": true,
+      "showBottomPadsLayer": true,
+      "showTopTestPointsLayer": true,
+      "showBottomTestPointsLayer": true,
+      "showTopComponents": true,
+      "showBottomComponents": true,
+      "showPowerLayer": true,
+      "showGroundLayer": true,
+      "showConnectionsLayer": true
+    }
+  },
+  "toolInstances": {
+    "via": {
+      "id": "via",
+      "name": "Via",
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "padTop": {
+      "id": "padTop",
+      "name": "Pad (Top)",
+      "color": "#0072B2",
+      "size": 10
+    },
+    "padBottom": {
+      "id": "padBottom",
+      "name": "Pad (Bottom)",
+      "color": "#56B4E9",
+      "size": 10
+    },
+    "testPointTop": {
+      "id": "testPointTop",
+      "name": "Test Point (Top)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "testPointBottom": {
+      "id": "testPointBottom",
+      "name": "Test Point (Bottom)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "traceTop": {
+      "id": "traceTop",
+      "name": "Trace (Top)",
+      "color": "#0072B2",
+      "size": 8
+    },
+    "traceBottom": {
+      "id": "traceBottom",
+      "name": "Trace (Bottom)",
+      "color": "#F781BF",
+      "size": 8
+    },
+    "componentTop": {
+      "id": "componentTop",
+      "name": "Component (Top)",
+      "color": "#6A3D9A",
+      "size": 35
+    },
+    "componentBottom": {
+      "id": "componentBottom",
+      "name": "Component (Bottom)",
+      "color": "#9467BD",
+      "size": 35
+    },
+    "power": {
+      "id": "power",
+      "name": "Power",
+      "color": "#ff0000",
+      "size": 25
+    },
+    "ground": {
+      "id": "ground",
+      "name": "Ground",
+      "color": "#000000",
+      "size": 25
+    }
+  },
+  "projectStats": {
+    "sessionCount": 1,
+    "lastPromptDate": null,
+    "lastPromptSession": 0,
+    "totalWorkTimeMs": 1080000,
+    "donatedDate": null,
+    "declinedDate": null,
+    "bomsGenerated": 0,
+    "netlistsGenerated": 0,
+    "componentsIdentified": 0,
+    "schematicsGenerated": 0,
+    "troubleshootingAnalyses": 0,
+    "explainCircuitRuns": 0,
+    "datasheetExtractions": 0,
+    "measurementRuns": 0,
+    "errorCheckRuns": 0
+  }
+}

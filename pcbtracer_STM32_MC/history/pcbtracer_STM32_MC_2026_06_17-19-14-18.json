@@ -1,0 +1,1073 @@
+{
+  "version": 1,
+  "fileType": "PCB_REVERSE_ENGINEERING_AUTOSAVE",
+  "savedAt": "2026-06-17T23:14:18.031Z",
+  "view": {
+    "currentView": "overlay",
+    "viewScale": 0.25,
+    "cameraWorldCenter": {
+      "x": -24.01509953286859,
+      "y": 387.80407554737644
+    },
+    "showBothLayers": true,
+    "selectedDrawingLayer": "top"
+  },
+  "images": {
+    "top": {
+      "name": "mower-stm32.jpg",
+      "width": 5143,
+      "height": 3211,
+      "filePath": "images/mower-stm32.jpg",
+      "x": -607.1459527983613,
+      "y": 572.5600668521294,
+      "scale": 1,
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "bottom": {
+      "name": "mower-mobo-front.png",
+      "width": 3660,
+      "height": 1889,
+      "filePath": "images/mower-mobo-front.png",
+      "x": -2978.094512469145,
+      "y": 711.6325977163272,
+      "scale": 1.8100000000000007,
+      "rotation": 180.2,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "extra": [],
+    "layerOrder": [
+      0,
+      1
+    ]
+  },
+  "projectDirectoryName": "pcbtracer_STM32_MC",
+  "drawing": {
+    "drawingStrokes": [
+      {
+        "id": "1781736565515-trace-autofinalize",
+        "points": [
+          {
+            "x": 444.14089591525703,
+            "y": 432.29129906645335
+          },
+          {
+            "x": -33.289704084743335,
+            "y": 546.4245990664532
+          }
+        ],
+        "color": "#56B4E9",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "points": [
+          {
+            "x": 280.1747666971496,
+            "y": 390.4960628524616
+          },
+          {
+            "x": 212.6593666971503,
+            "y": 813.2712628524615
+          },
+          {
+            "x": -59.00983330285044,
+            "y": 818.0937628524613
+          }
+        ],
+        "color": "#56B4E9",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "points": [
+          {
+            "x": 440.36763789056545,
+            "y": 347.41333171391557
+          },
+          {
+            "x": 219.33503789056522,
+            "y": 912.7210317139154
+          },
+          {
+            "x": -76.71476210943501,
+            "y": 907.3627317139155
+          }
+        ],
+        "color": "#BCBD22",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736930239-trace-autofinalize",
+        "points": [
+          {
+            "x": 270.23953789056577,
+            "y": 518.8810317139156
+          },
+          {
+            "x": -52.60216210943463,
+            "y": 644.8027317139156
+          }
+        ],
+        "color": "#BCBD22",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736953170-trace-autofinalize",
+        "points": [
+          {
+            "x": 435.0093378905658,
+            "y": 521.5602317139156
+          },
+          {
+            "x": -43.22496210943473,
+            "y": 733.2157317139156
+          }
+        ],
+        "color": "#AA4499",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "points": [
+          {
+            "x": 274.2582378905654,
+            "y": 301.8671317139158
+          },
+          {
+            "x": 141.63864598384362,
+            "y": 987.7382171734491
+          },
+          {
+            "x": -63.31885401615591,
+            "y": 989.0778171734489
+          }
+        ],
+        "color": "#AA4499",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737530324-trace-autofinalize",
+        "points": [
+          {
+            "x": 1111.8441817863134,
+            "y": 550.1893071597316
+          },
+          {
+            "x": 57.96045256820571,
+            "y": -73.20320765508302
+          },
+          {
+            "x": -53.9222474317944,
+            "y": -69.3451076550831
+          }
+        ],
+        "color": "#332288",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "points": [
+          {
+            "x": 1586.827800716354,
+            "y": 632.8063886412131
+          },
+          {
+            "x": 1510.8871951379356,
+            "y": 537.0524188652645
+          },
+          {
+            "x": 1506.2575951379358,
+            "y": 273.1635188652642
+          },
+          {
+            "x": -42.3535048620638,
+            "y": 287.05241886526414
+          }
+        ],
+        "color": "#332288",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737615769-trace-autofinalize",
+        "points": [
+          {
+            "x": 1121.9258951379359,
+            "y": 634.6246188652642
+          },
+          {
+            "x": 257.05226550830685,
+            "y": -152.3254885421428
+          },
+          {
+            "x": -64.70693449169403,
+            "y": -159.2698885421429
+          }
+        ],
+        "color": "#00BFC4",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737637891-trace-autofinalize",
+        "points": [
+          {
+            "x": 1587.842632174973,
+            "y": 551.2260892356345
+          },
+          {
+            "x": 1350.6962321749731,
+            "y": 215.54988923563474
+          },
+          {
+            "x": -42.82226782502721,
+            "y": 199.3461892356347
+          }
+        ],
+        "color": "#00BFC4",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737751941-trace-autofinalize",
+        "points": [
+          {
+            "x": 1113.5923321749735,
+            "y": 472.84778923563476
+          },
+          {
+            "x": 252.37953094040586,
+            "y": -256.32281035284257
+          },
+          {
+            "x": -53.04746905959473,
+            "y": -253.10781035284242
+          }
+        ],
+        "color": "#2CA02C",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737774829-trace-autofinalize",
+        "points": [
+          {
+            "x": 1591.9298572778534,
+            "y": 709.3098941739065
+          },
+          {
+            "x": 1328.9909572778536,
+            "y": 41.790694173906445
+          },
+          {
+            "x": -51.009042722146205,
+            "y": 17.790694173906445
+          }
+        ],
+        "color": "#2CA02C",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737820007-trace-autofinalize",
+        "points": [
+          {
+            "x": 1268.9887572778537,
+            "y": 672.8144941739062
+          },
+          {
+            "x": 925.360695549459,
+            "y": 118.215225038104
+          },
+          {
+            "x": -44.93250445054082,
+            "y": 112.42822503810419
+          }
+        ],
+        "color": "#7F7F7F",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737841796-trace-autofinalize",
+        "points": [
+          {
+            "x": 1427.3548251790883,
+            "y": 511.7156756553878
+          },
+          {
+            "x": 513.9295881420516,
+            "y": -350.4084613816491
+          },
+          {
+            "x": -62.45931185794825,
+            "y": -341.14916138164915
+          }
+        ],
+        "color": "#7F7F7F",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "points": [
+          {
+            "x": 1269.5938881420514,
+            "y": 514.8288386183509
+          },
+          {
+            "x": 3.8689770309401865,
+            "y": 1271.8866608405733
+          },
+          {
+            "x": -1098.9088229690599,
+            "y": 1263.553360840573
+          },
+          {
+            "x": -1087.7977229690598,
+            "y": 457.99776084057294
+          },
+          {
+            "x": -946.13102296906,
+            "y": 466.3311608405729
+          }
+        ],
+        "color": "#F0E442",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "points": [
+          {
+            "x": 1426.87597703094,
+            "y": 669.3929608405728
+          },
+          {
+            "x": -26.11749704313388,
+            "y": 1207.876864544277
+          },
+          {
+            "x": -1019.4507970431339,
+            "y": 1204.5434645442765
+          },
+          {
+            "x": -1019.4507970431339,
+            "y": 727.8768645442767
+          },
+          {
+            "x": -939.4507970431339,
+            "y": 731.2101645442767
+          }
+        ],
+        "color": "#F0E442",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "points": [
+          {
+            "x": 1268.5353029568662,
+            "y": 591.5750645442768
+          },
+          {
+            "x": -1056.4657044505414,
+            "y": 1415.957212692425
+          },
+          {
+            "x": -1049.5212044505413,
+            "y": 536.3276126924249
+          },
+          {
+            "x": -940.7249044505413,
+            "y": 552.5313126924249
+          }
+        ],
+        "color": "#D62728",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781738013163-trace-autofinalize",
+        "points": [
+          {
+            "x": 1426.582043697607,
+            "y": 589.3608978776101
+          },
+          {
+            "x": 61.2602,
+            "y": 1105.3366999999998
+          },
+          {
+            "x": -108.18419999999998,
+            "y": 1097.0034
+          }
+        ],
+        "color": "#D62728",
+        "size": 8,
+        "layer": "top",
+        "type": "trace"
+      }
+    ],
+    "vias": [],
+    "tracesTop": [
+      {
+        "id": "1781736565515-trace-autofinalize",
+        "x1": 444.14089591525703,
+        "y1": 432.29129906645335,
+        "x2": -33.289704084743335,
+        "y2": 546.4245990664532,
+        "size": 8,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "x1": 280.1747666971496,
+        "y1": 390.4960628524616,
+        "x2": 212.6593666971503,
+        "y2": 813.2712628524615,
+        "size": 8,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "x1": 212.6593666971503,
+        "y1": 813.2712628524615,
+        "x2": -59.00983330285044,
+        "y2": 818.0937628524613,
+        "size": 8,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "x1": 440.36763789056545,
+        "y1": 347.41333171391557,
+        "x2": 219.33503789056522,
+        "y2": 912.7210317139154,
+        "size": 8,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "x1": 219.33503789056522,
+        "y1": 912.7210317139154,
+        "x2": -76.71476210943501,
+        "y2": 907.3627317139155,
+        "size": 8,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736930239-trace-autofinalize",
+        "x1": 270.23953789056577,
+        "y1": 518.8810317139156,
+        "x2": -52.60216210943463,
+        "y2": 644.8027317139156,
+        "size": 8,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736953170-trace-autofinalize",
+        "x1": 435.0093378905658,
+        "y1": 521.5602317139156,
+        "x2": -43.22496210943473,
+        "y2": 733.2157317139156,
+        "size": 8,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "x1": 274.2582378905654,
+        "y1": 301.8671317139158,
+        "x2": 141.63864598384362,
+        "y2": 987.7382171734491,
+        "size": 8,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "x1": 141.63864598384362,
+        "y1": 987.7382171734491,
+        "x2": -63.31885401615591,
+        "y2": 989.0778171734489,
+        "size": 8,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781737530324-trace-autofinalize",
+        "x1": 1111.8441817863134,
+        "y1": 550.1893071597316,
+        "x2": 57.96045256820571,
+        "y2": -73.20320765508302,
+        "size": 8,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737530324-trace-autofinalize",
+        "x1": 57.96045256820571,
+        "y1": -73.20320765508302,
+        "x2": -53.9222474317944,
+        "y2": -69.3451076550831,
+        "size": 8,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "x1": 1586.827800716354,
+        "y1": 632.8063886412131,
+        "x2": 1510.8871951379356,
+        "y2": 537.0524188652645,
+        "size": 8,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "x1": 1510.8871951379356,
+        "y1": 537.0524188652645,
+        "x2": 1506.2575951379358,
+        "y2": 273.1635188652642,
+        "size": 8,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "x1": 1506.2575951379358,
+        "y1": 273.1635188652642,
+        "x2": -42.3535048620638,
+        "y2": 287.05241886526414,
+        "size": 8,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737615769-trace-autofinalize",
+        "x1": 1121.9258951379359,
+        "y1": 634.6246188652642,
+        "x2": 257.05226550830685,
+        "y2": -152.3254885421428,
+        "size": 8,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737615769-trace-autofinalize",
+        "x1": 257.05226550830685,
+        "y1": -152.3254885421428,
+        "x2": -64.70693449169403,
+        "y2": -159.2698885421429,
+        "size": 8,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737637891-trace-autofinalize",
+        "x1": 1587.842632174973,
+        "y1": 551.2260892356345,
+        "x2": 1350.6962321749731,
+        "y2": 215.54988923563474,
+        "size": 8,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737637891-trace-autofinalize",
+        "x1": 1350.6962321749731,
+        "y1": 215.54988923563474,
+        "x2": -42.82226782502721,
+        "y2": 199.3461892356347,
+        "size": 8,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737751941-trace-autofinalize",
+        "x1": 1113.5923321749735,
+        "y1": 472.84778923563476,
+        "x2": 252.37953094040586,
+        "y2": -256.32281035284257,
+        "size": 8,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737751941-trace-autofinalize",
+        "x1": 252.37953094040586,
+        "y1": -256.32281035284257,
+        "x2": -53.04746905959473,
+        "y2": -253.10781035284242,
+        "size": 8,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737774829-trace-autofinalize",
+        "x1": 1591.9298572778534,
+        "y1": 709.3098941739065,
+        "x2": 1328.9909572778536,
+        "y2": 41.790694173906445,
+        "size": 8,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737774829-trace-autofinalize",
+        "x1": 1328.9909572778536,
+        "y1": 41.790694173906445,
+        "x2": -51.009042722146205,
+        "y2": 17.790694173906445,
+        "size": 8,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737820007-trace-autofinalize",
+        "x1": 1268.9887572778537,
+        "y1": 672.8144941739062,
+        "x2": 925.360695549459,
+        "y2": 118.215225038104,
+        "size": 8,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737820007-trace-autofinalize",
+        "x1": 925.360695549459,
+        "y1": 118.215225038104,
+        "x2": -44.93250445054082,
+        "y2": 112.42822503810419,
+        "size": 8,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737841796-trace-autofinalize",
+        "x1": 1427.3548251790883,
+        "y1": 511.7156756553878,
+        "x2": 513.9295881420516,
+        "y2": -350.4084613816491,
+        "size": 8,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737841796-trace-autofinalize",
+        "x1": 513.9295881420516,
+        "y1": -350.4084613816491,
+        "x2": -62.45931185794825,
+        "y2": -341.14916138164915,
+        "size": 8,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": 1269.5938881420514,
+        "y1": 514.8288386183509,
+        "x2": 3.8689770309401865,
+        "y2": 1271.8866608405733,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": 3.8689770309401865,
+        "y1": 1271.8866608405733,
+        "x2": -1098.9088229690599,
+        "y2": 1263.553360840573,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": -1098.9088229690599,
+        "y1": 1263.553360840573,
+        "x2": -1087.7977229690598,
+        "y2": 457.99776084057294,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": -1087.7977229690598,
+        "y1": 457.99776084057294,
+        "x2": -946.13102296906,
+        "y2": 466.3311608405729,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": 1426.87597703094,
+        "y1": 669.3929608405728,
+        "x2": -26.11749704313388,
+        "y2": 1207.876864544277,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": -26.11749704313388,
+        "y1": 1207.876864544277,
+        "x2": -1019.4507970431339,
+        "y2": 1204.5434645442765,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": -1019.4507970431339,
+        "y1": 1204.5434645442765,
+        "x2": -1019.4507970431339,
+        "y2": 727.8768645442767,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": -1019.4507970431339,
+        "y1": 727.8768645442767,
+        "x2": -939.4507970431339,
+        "y2": 731.2101645442767,
+        "size": 8,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "x1": 1268.5353029568662,
+        "y1": 591.5750645442768,
+        "x2": -1056.4657044505414,
+        "y2": 1415.957212692425,
+        "size": 8,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "x1": -1056.4657044505414,
+        "y1": 1415.957212692425,
+        "x2": -1049.5212044505413,
+        "y2": 536.3276126924249,
+        "size": 8,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "x1": -1049.5212044505413,
+        "y1": 536.3276126924249,
+        "x2": -940.7249044505413,
+        "y2": 552.5313126924249,
+        "size": 8,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781738013163-trace-autofinalize",
+        "x1": 1426.582043697607,
+        "y1": 589.3608978776101,
+        "x2": 61.2602,
+        "y2": 1105.3366999999998,
+        "size": 8,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781738013163-trace-autofinalize",
+        "x1": 61.2602,
+        "y1": 1105.3366999999998,
+        "x2": -108.18419999999998,
+        "y2": 1097.0034,
+        "size": 8,
+        "color": "#D62728"
+      }
+    ],
+    "tracesBottom": [],
+    "componentsTop": [],
+    "componentsBottom": [],
+    "grounds": [],
+    "powers": []
+  },
+  "powerBuses": [
+    {
+      "id": "powerbus-default",
+      "name": "+5VDC",
+      "voltage": "+5",
+      "color": "#ff0000"
+    }
+  ],
+  "groundBuses": [
+    {
+      "id": "groundbus-circuit",
+      "name": "GND",
+      "color": "#000000"
+    }
+  ],
+  "groups": [],
+  "pointIdCounter": 1,
+  "designatorCounters": {},
+  "autoAssignDesignators": true,
+  "useGlobalDesignatorCounters": false,
+  "traceColors": {
+    "top": "#D62728",
+    "bottom": "#F781BF"
+  },
+  "traceSizes": {
+    "top": 8,
+    "bottom": 6
+  },
+  "padColors": {
+    "top": "#0072B2",
+    "bottom": "#56B4E9"
+  },
+  "padSizes": {
+    "top": 18,
+    "bottom": 18
+  },
+  "componentColors": {
+    "top": "#332288",
+    "bottom": "#9467BD"
+  },
+  "componentSizes": {
+    "top": 35,
+    "bottom": 18
+  },
+  "testPointColors": {
+    "top": "#FFFF00",
+    "bottom": "#FFFF00"
+  },
+  "testPointSizes": {
+    "top": 15,
+    "bottom": 15
+  },
+  "componentConnectionColor": "#E69F00",
+  "componentConnectionSize": 4,
+  "toolLayerDefaults": {
+    "trace": "top",
+    "pad": "top",
+    "testPoint": "top",
+    "component": "top"
+  },
+  "toolSettings": {
+    "trace": {
+      "color": "#D62728",
+      "size": 8
+    },
+    "via": {
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "pad": {
+      "color": "#0072B2",
+      "size": 10
+    },
+    "component": {
+      "color": "#332288",
+      "size": 35
+    },
+    "ground": {
+      "color": "#000000",
+      "size": 25
+    },
+    "power": {
+      "color": "#ff0000",
+      "size": 25
+    }
+  },
+  "locks": {
+    "areImagesLocked": false,
+    "areViasLocked": false,
+    "arePadsLocked": false,
+    "areTracesLocked": false,
+    "areComponentsLocked": false,
+    "areGroundNodesLocked": false,
+    "arePowerNodesLocked": false
+  },
+  "visibility": {
+    "showViasLayer": true,
+    "showTopPadsLayer": true,
+    "showBottomPadsLayer": true,
+    "showTopTracesLayer": true,
+    "showBottomTracesLayer": true,
+    "showTopTestPointsLayer": true,
+    "showBottomTestPointsLayer": true,
+    "showTopComponents": true,
+    "showBottomComponents": true,
+    "showPowerLayer": true,
+    "showGroundLayer": true,
+    "showConnectionsLayer": true,
+    "showTraceCornerDots": false,
+    "showTraceEndDots": true,
+    "componentIconDisplay": "both",
+    "netHighlightDimmingLevel": 70,
+    "showICPinNumbers": true,
+    "showICPinNames": true,
+    "pinNumberPosition": "upper-right",
+    "pinNumberFontSize": 11,
+    "transparency": 33,
+    "isBottomView": false
+  },
+  "autoSave": {
+    "enabled": true,
+    "interval": 5,
+    "baseName": "pcbtracer_STM32_MC"
+  },
+  "projectInfo": {
+    "name": "pcbtracer_STM32_MC"
+  },
+  "aiSettings": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash"
+  },
+  "projectNotes": [],
+  "symptomColumns": [
+    "Item",
+    "Symptom"
+  ],
+  "noteColumns": [
+    "Item",
+    "Notes"
+  ],
+  "projectMetadata": {
+    "productName": "STM32_MC",
+    "modelNumber": "",
+    "manufacturer": "",
+    "dateManufactured": "2026-06-17"
+  },
+  "troubleshootingResults": null,
+  "dismissedErrors": [],
+  "nodeProperties": {},
+  "homeViews": {
+    "0": {
+      "pcbReferenceX": -2043.0454345846742,
+      "pcbReferenceY": 133.10165969239785,
+      "x": 0,
+      "y": 0,
+      "zoom": 0.5184,
+      "viewRotation": 0,
+      "viewFlipX": false,
+      "isBottomView": false,
+      "transparency": 33,
+      "showTopImage": true,
+      "showBottomImage": false,
+      "showViasLayer": true,
+      "showTopTracesLayer": true,
+      "showBottomTracesLayer": true,
+      "showTopPadsLayer": true,
+      "showBottomPadsLayer": true,
+      "showTopTestPointsLayer": true,
+      "showBottomTestPointsLayer": true,
+      "showTopComponents": true,
+      "showBottomComponents": true,
+      "showPowerLayer": true,
+      "showGroundLayer": true,
+      "showConnectionsLayer": true
+    }
+  },
+  "toolInstances": {
+    "via": {
+      "id": "via",
+      "name": "Via",
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "padTop": {
+      "id": "padTop",
+      "name": "Pad (Top)",
+      "color": "#0072B2",
+      "size": 10
+    },
+    "padBottom": {
+      "id": "padBottom",
+      "name": "Pad (Bottom)",
+      "color": "#56B4E9",
+      "size": 10
+    },
+    "testPointTop": {
+      "id": "testPointTop",
+      "name": "Test Point (Top)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "testPointBottom": {
+      "id": "testPointBottom",
+      "name": "Test Point (Bottom)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "traceTop": {
+      "id": "traceTop",
+      "name": "Trace (Top)",
+      "color": "#D62728",
+      "size": 8
+    },
+    "traceBottom": {
+      "id": "traceBottom",
+      "name": "Trace (Bottom)",
+      "color": "#F781BF",
+      "size": 8
+    },
+    "componentTop": {
+      "id": "componentTop",
+      "name": "Component (Top)",
+      "color": "#332288",
+      "size": 35
+    },
+    "componentBottom": {
+      "id": "componentBottom",
+      "name": "Component (Bottom)",
+      "color": "#9467BD",
+      "size": 35
+    },
+    "power": {
+      "id": "power",
+      "name": "Power",
+      "color": "#ff0000",
+      "size": 25
+    },
+    "ground": {
+      "id": "ground",
+      "name": "Ground",
+      "color": "#000000",
+      "size": 25
+    }
+  },
+  "projectStats": {
+    "sessionCount": 1,
+    "lastPromptDate": null,
+    "lastPromptSession": 0,
+    "totalWorkTimeMs": 2580000,
+    "donatedDate": null,
+    "declinedDate": null,
+    "bomsGenerated": 0,
+    "netlistsGenerated": 0,
+    "componentsIdentified": 0,
+    "schematicsGenerated": 0,
+    "troubleshootingAnalyses": 0,
+    "explainCircuitRuns": 0,
+    "datasheetExtractions": 0,
+    "measurementRuns": 0,
+    "errorCheckRuns": 0
+  }
+}
