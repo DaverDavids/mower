@@ -122,6 +122,26 @@
 			<locationURI>PARENT-1-PROJECT_LOC/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_usb.c</locationURI>
 		</link>
 		<link>
+			<name>Middlewares/USB_Device_Library/usbd_cdc.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Src/usbd_cdc.c</locationURI>
+		</link>
+		<link>
+			<name>Middlewares/USB_Device_Library/usbd_core.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Middlewares/ST/STM32_USB_Device_Library/Core/Src/usbd_core.c</locationURI>
+		</link>
+		<link>
+			<name>Middlewares/USB_Device_Library/usbd_ctlreq.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Middlewares/ST/STM32_USB_Device_Library/Core/Src/usbd_ctlreq.c</locationURI>
+		</link>
+		<link>
+			<name>Middlewares/USB_Device_Library/usbd_ioreq.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Middlewares/ST/STM32_USB_Device_Library/Core/Src/usbd_ioreq.c</locationURI>
+		</link>
+		<link>
 			<name>Application/User/Core/main.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/main.c</locationURI>
@@ -135,6 +155,26 @@
 			<name>Application/User/Core/stm32f1xx_it.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/stm32f1xx_it.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/USB_DEVICE/App/usb_device.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/USB_DEVICE/App/usb_device.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/USB_DEVICE/App/usbd_cdc_if.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/USB_DEVICE/App/usbd_cdc_if.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/USB_DEVICE/App/usbd_desc.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/USB_DEVICE/App/usbd_desc.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/USB_DEVICE/Target/usbd_conf.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/USB_DEVICE/Target/usbd_conf.c</locationURI>
 		</link>
 	</linkedResources>
 </projectDescription>
