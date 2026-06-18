@@ -2,20 +2,17 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : 3-axis BLDC motor controller - STM32F103C8T6 Blue Pill
+  * @brief          : Main program body
   ******************************************************************************
-  * Safe startup: all motor outputs default to OFF.
-  * Comms: USB CDC virtual COM port (PA11/PA12) for Atomic Pi commands.
-  * Debug: COMMS_Debug() sends "DBG:..." lines over same USB CDC port.
+  * @attention
   *
-  * FIRST BRING-UP CHECKLIST:
-  *   1. Flash with BOOT0=1 via USB DFU or SWD.
-  *   2. Connect USB to Atomic Pi. Open /dev/ttyACM0 at any baud (CDC ignores it).
-  *   3. Send "P\n" - should receive "PONG\n" confirming comms.
-  *   4. Send "?\n" to read all motor states (all disabled at boot).
-  *   5. Enable motor 0 with "E0\n", set low duty "S0,180\n", watch Hall counts.
-  *   6. Query counts with "?\n" - commut_count should increment if spinning.
-  *   7. Emergency stop any time: send "DA\n".
+  * Copyright (c) 2026 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -25,23 +22,22 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "motor_controller.h"
-#include "usb_cdc_comms.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define STATUS_REPORT_INTERVAL_MS   1000U  /* Send periodic status every 1s */
-#define LED_PIN                     GPIO_PIN_13
-#define LED_PORT                    GPIOC
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -50,8 +46,7 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-static uint32_t g_last_status_ms = 0;
-static uint32_t g_loop_count     = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,11 +56,12 @@ static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-static void SendPeriodicStatus(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 /* USER CODE END 0 */
 
 /**
@@ -76,6 +72,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -84,12 +81,14 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -100,19 +99,6 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
-  /* --- Motor controller: safe defaults (all off) --- */
-  MC_Init(&htim1, &htim3, &htim4);
-
-  /* --- Comms layer --- */
-  COMMS_Init();
-
-  /* Blink LED once to signal ready */
-  HAL_GPIO_WritePin(LED_PORT, LED_PIN, GPIO_PIN_RESET); /* LED on  */
-  HAL_Delay(200);
-  HAL_GPIO_WritePin(LED_PORT, LED_PIN, GPIO_PIN_SET);   /* LED off */
-
-  COMMS_Debug("MOCO boot OK - all motors DISABLED");
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -122,21 +108,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-    /* 1. Process incoming commands from Atomic Pi */
-    COMMS_Tick();
-
-    /* 2. Run Hall-sensor commutation for all motors */
-    MC_CommutationTick();
-
-    /* 3. Periodic status broadcast */
-    uint32_t now = HAL_GetTick();
-    if ((now - g_last_status_ms) >= STATUS_REPORT_INTERVAL_MS) {
-        g_last_status_ms = now;
-        SendPeriodicStatus();
-    }
-
-    g_loop_count++;
   }
   /* USER CODE END 3 */
 }
@@ -472,22 +443,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static void SendPeriodicStatus(void)
-{
-    /* Only send if host is connected (avoids flooding before enumeration) */
-    if (!COMMS_IsConnected()) return;
 
-    char buf[128];
-    for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
-        MotorState_t s = MC_GetState(m);
-        snprintf(buf, sizeof(buf) - 1,
-                 "STATUS:%u,%u,%lu,%u,%lu,%lu\n",
-                 m, s.enabled, s.duty,
-                 (unsigned)s.direction,
-                 s.commut_count, s.hall_errors);
-        COMMS_Send(buf);
-    }
-}
 /* USER CODE END 4 */
 
 /**
@@ -497,12 +453,10 @@ static void SendPeriodicStatus(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  MC_DisableAll(); /* Safe: kill motors on any HAL fault */
+  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  /* Blink LED rapidly to signal fault */
-  while (1) {
-    HAL_GPIO_TogglePin(LED_PORT, LED_PIN);
-    for (volatile uint32_t i = 0; i < 200000; i++);
+  while (1)
+  {
   }
   /* USER CODE END Error_Handler_Debug */
 }
@@ -517,7 +471,8 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  (void)file; (void)line;
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
