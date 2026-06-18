@@ -1,0 +1,21 @@
+# STM32CubeIDE workspace metadata – machine-specific, never commit
+.metadata/
+
+# Build output
+STM32CubeIDE/Debug/
+STM32CubeIDE/Release/
+Debug/
+Release/
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+
+# Old/orphaned outer project descriptor (was misplaced)
+../.project
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+*.swp
