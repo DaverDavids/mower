@@ -147,6 +147,11 @@
 			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/main.c</locationURI>
 		</link>
 		<link>
+			<name>Application/User/Core/motor_ctrl.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/motor_ctrl.c</locationURI>
+		</link>
+		<link>
 			<name>Application/User/Core/stm32f1xx_hal_msp.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/stm32f1xx_hal_msp.c</locationURI>
@@ -155,6 +160,11 @@
 			<name>Application/User/Core/stm32f1xx_it.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/stm32f1xx_it.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/Core/usb_cmd.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Core/Src/usb_cmd.c</locationURI>
 		</link>
 		<link>
 			<name>Application/User/USB_DEVICE/App/usb_device.c</name>
