@@ -82,6 +82,7 @@ def main():
 
     try:
         ser = open_port(args.port)
+        #time.sleep(0.5)   # let USB CDC re-enumerate after DTR assert
     except serial.SerialException as e:
         print(f"ERROR: Cannot open {args.port}: {e}", file=sys.stderr)
         sys.exit(1)
