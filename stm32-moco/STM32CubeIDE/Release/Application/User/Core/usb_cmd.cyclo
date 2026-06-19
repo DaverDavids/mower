@@ -1,0 +1,4 @@
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:46:6:USBCMD_OnReceive	3
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:61:6:USBCMD_Send	2
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:261:6:USBCMD_Init	1
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:275:6:USBCMD_Process	50
