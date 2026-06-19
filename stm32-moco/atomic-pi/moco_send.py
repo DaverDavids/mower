@@ -22,7 +22,8 @@ import sys
 import time
 import argparse
 
-DEFAULT_PORT    = "/dev/ttyACM0"
+#DEFAULT_PORT    = "/dev/ttyACM0"
+DEFAULT_PORT    = "COM24"
 DEFAULT_BAUD    = 115200   # ignored by CDC, but pyserial requires a value
 TIMEOUT_S       = 1.0
 READ_LINES      = 8        # max response lines to collect
