@@ -4,4 +4,4 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/main.c:166:13:MX_TIM1_
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/main.c:249:13:MX_TIM3_Init	6
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/main.c:306:13:MX_TIM4_Init	6
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/main.c:363:13:MX_GPIO_Init	1
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/main.c:412:6:Error_Handler	1
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/main.c:436:6:Error_Handler	1
