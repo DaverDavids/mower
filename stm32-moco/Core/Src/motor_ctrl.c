@@ -15,12 +15,11 @@
  */
 
 #include "motor_ctrl.h"
-#include "tim.h"  /* for htim1, htim3, htim4 – declared in main.c */
 #include "main.h"
 #include <string.h>
 
 /* -------------------------------------------------------------------------
- * External timer handles (declared in main.c by CubeMX)
+ * External timer handles (declared in main.c)
  * -------------------------------------------------------------------------
  */
 extern TIM_HandleTypeDef htim1;
