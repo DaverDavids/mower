@@ -1,0 +1,47 @@
+## Project Objective
+The goal is to implement a 3-axis Brushless DC (BLDC) motor controller on a single STM32F103C8T6 Blue Pill development board. The system utilizes 18 digital outputs for phase and driver control, 9 digital inputs for position feedback, and relies on USB DFU for firmware updates.
+------------------------------
+## Blue Pill Pin Layout Matrix
+This configuration uses 29 out of 32 available GPIO pins, isolating your USB data and debugging ports:
+
+| Target Component [1, 2, 3, 4, 5] | Function / Signal Type | Blue Pill Screen Pins | Internal MCU Resource |
+|---|---|---|---|
+| Motor 1 (Line Buffered) | Phase High-Side (PWM) Phase Low-Side (PWM) | A8, A9, A10 B13, B14, B15 | TIM1_CH1, CH2, CH3 TIM1_CH1N, CH2N, CH3N (Partial Remap) |
+| Motor 2 (HW Protected) | Phase PWM Drive Driver Enable Lines | B6, B7, B8 A15, B3, B5 | TIM4_CH1, CH2, CH3 Standard GPIO Outputs |
+| Motor 3 (HW Protected) | Phase PWM Drive Driver Enable Lines | B4, B0, B1 B9, B11, B12 | TIM3_CH1, CH3, CH4 Standard GPIO Outputs |
+| Hall Sensors | Position Inputs (9 Total) | A0, A1, A2 (M1) A3, A4, A5 (M2) A6, A7, B10 (M3) | Standard GPIO Inputs (With Internal Pull-up Resistors) |
+| System Lines | USB DFU Bootloader SWD Debug Link | A11, A12 A13, A14 | Native USB D- / D+ Lines SWDIO / SWCLK Ports |
+
+------------------------------
+## Implementation Strategy
+
+   1. Hardware Safety: Place 10kΩ pull-down resistors on the Motor 1 lines (A8-A10, B13-B15). This prevents short circuits when pins float during MCU boot or flashing.
+   2. Frequency Generation: Configure TIM1, TIM3, and TIM4 with a Prescaler of 0 and an Auto-Reload Register (ARR) value of 3599 to produce a quiet, 20 kHz ultrasonic PWM frequency at a 72 MHz system clock.
+   3. Advanced Timing (Motor 1): Use TIM1's hardware dead-time engine (HAL_TIMEx_ConfigBreakDeadTime) to force a microsecond delay between high and low-side switching. Set the active polarities to HIGH and Idle States to RESET to guarantee outputs drop to 0V when disabled.
+   4. Commutation Loop: Set up your code to poll the 9 Hall input pins or capture them via External Interrupts (EXTI). Use the resulting 3-bit binary state per motor to index into a 6-step commutation lookup table. This table switches your PWM signals and Enable lines to the appropriate phases to spin the motors. [6, 7] 
+   5. Firmware Deployment: Set the physical BOOT0 jumper to 1 to activate the onboard system bootloader, permitting direct application flashing over the micro-USB port using STM32CubeProgrammer. [8] 
+
+
+
+
+Motor Outputs (18 Pins Total)
+
+Motor 1 (Advanced Timer - TIM1)
+This motor uses the line buffer. 
+It requires TIM1 for automatic hardware dead-time generation to prevent short circuits.
+High-Side: A8 (CH1), A9 (CH2), A10 (CH3)
+Low-Side: B13 (CH1N), B14 (CH2N), B15 (CH3N)
+
+Motor 2 (General Purpose Timer - TIM4)Safe for standard PWM since your hardware driver prevents short circuits.
+High-Side / PWM: B6 (CH1), B7 (CH2), B8 (CH3)
+Low-Side / Enable Lines: A15, B3, B5 (Configured as standard GPIO outputs)
+
+Motor 3 (General Purpose Timer - TIM3)Safe for standard PWM since your hardware driver prevents short circuits.
+High-Side / PWM: B4 (CH1), B0 (CH3), B1 (CH4)
+Low-Side / Enable Lines: B9, B11, B12 (Configured as standard GPIO outputs)
+
+Hall Effect Inputs (9 Pins Total)
+You will configure these 9 pins as digital inputs with internal pull-up resistors enabled (GPIO_NOPULL or GPIO_PULLUP depending on your Hall sensors).
+Motor 1 Halls: A0, A1, A2
+Motor 2 Halls: A3, A4, A5
+Motor 3 Halls: A6, A7, B10
