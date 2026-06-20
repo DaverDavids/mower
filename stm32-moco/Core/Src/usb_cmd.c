@@ -39,6 +39,79 @@ static uint16_t line_pos = 0;
 static char tx_scratch[256];
 
 /* -------------------------------------------------------------------------
+ * Pin lookup table
+ * Covers all named GPIOs in the project:
+ *   - Hall sensor inputs:       M1=PA0-PA2, M2=PA3-PA5, M3=PB10-PB12
+ *   - M1 high-side PWM outputs: PA8, PA9, PA10 (TIM1 CH1-3)
+ *   - M1 low-side PWM outputs:  PB13, PB14, PB15 (TIM1 CH1N-3N)
+ *   - M2 high-side PWM outputs: PA6, PA7, PB0 (TIM3 CH1-3)
+ *   - M2 low-side enables:      PA15, PB3, PB5 (GPIO output)
+ *   - M3 high-side PWM outputs: PB6, PB7, PB8 (TIM4 CH1-3)
+ *   - M3 low-side enables:      PB9, PC13, PC14 (GPIO output)
+ *
+ * SETPIN is blocked on PWM-controlled pins (M1 high/low-side, M2/M3
+ * high-side) to avoid fighting the timer hardware.  Use EN/DIS/SET
+ * commands for those.  Low-side enable GPIOs are freely settable.
+ * -------------------------------------------------------------------------
+ */
+typedef struct {
+    const char   *name;       /* uppercase name used in commands        */
+    GPIO_TypeDef *port;
+    uint16_t      pin;
+    uint8_t       output;     /* 1 = output pin, 0 = input pin          */
+    uint8_t       pwm_only;   /* 1 = timer-controlled, block SETPIN     */
+} PinEntry_t;
+
+static const PinEntry_t pin_table[] = {
+    /* Hall inputs – Motor 1 */
+    { "M1HA",  GPIOA, GPIO_PIN_0,  0, 0 },
+    { "M1HB",  GPIOA, GPIO_PIN_1,  0, 0 },
+    { "M1HC",  GPIOA, GPIO_PIN_2,  0, 0 },
+    /* Hall inputs – Motor 2 */
+    { "M2HA",  GPIOA, GPIO_PIN_3,  0, 0 },
+    { "M2HB",  GPIOA, GPIO_PIN_4,  0, 0 },
+    { "M2HC",  GPIOA, GPIO_PIN_5,  0, 0 },
+    /* Hall inputs – Motor 3 */
+    { "M3HA",  GPIOB, GPIO_PIN_10, 0, 0 },
+    { "M3HB",  GPIOB, GPIO_PIN_11, 0, 0 },
+    { "M3HC",  GPIOB, GPIO_PIN_12, 0, 0 },
+    /* M1 high-side PWM (TIM1 CH1-3) – read-only via READPIN */
+    { "M1PHA", GPIOA, GPIO_PIN_8,  1, 1 },
+    { "M1PHB", GPIOA, GPIO_PIN_9,  1, 1 },
+    { "M1PHC", GPIOA, GPIO_PIN_10, 1, 1 },
+    /* M1 low-side PWM (TIM1 CH1N-3N) – read-only via READPIN */
+    { "M1LSA", GPIOB, GPIO_PIN_13, 1, 1 },
+    { "M1LSB", GPIOB, GPIO_PIN_14, 1, 1 },
+    { "M1LSC", GPIOB, GPIO_PIN_15, 1, 1 },
+    /* M2 high-side PWM (TIM3 CH1-3) – read-only via READPIN */
+    { "M2PHA", GPIOA, GPIO_PIN_6,  1, 1 },
+    { "M2PHB", GPIOA, GPIO_PIN_7,  1, 1 },
+    { "M2PHC", GPIOB, GPIO_PIN_0,  1, 1 },
+    /* M2 low-side enables (GPIO output) – freely settable */
+    { "M2LSA", GPIOA, GPIO_PIN_15, 1, 0 },
+    { "M2LSB", GPIOB, GPIO_PIN_3,  1, 0 },
+    { "M2LSC", GPIOB, GPIO_PIN_5,  1, 0 },
+    /* M3 high-side PWM (TIM4 CH1-3) – read-only via READPIN */
+    { "M3PHA", GPIOB, GPIO_PIN_6,  1, 1 },
+    { "M3PHB", GPIOB, GPIO_PIN_7,  1, 1 },
+    { "M3PHC", GPIOB, GPIO_PIN_8,  1, 1 },
+    /* M3 low-side enables (GPIO output) – freely settable */
+    { "M3LSA", GPIOB, GPIO_PIN_9,  1, 0 },
+    { "M3LSB", GPIOC, GPIO_PIN_13, 1, 0 },
+    { "M3LSC", GPIOC, GPIO_PIN_14, 1, 0 },
+};
+
+#define PIN_TABLE_SIZE (sizeof(pin_table) / sizeof(pin_table[0]))
+
+static const PinEntry_t *find_pin(const char *name)
+{
+    for (uint32_t i = 0; i < PIN_TABLE_SIZE; i++) {
+        if (strcmp(pin_table[i].name, name) == 0) return &pin_table[i];
+    }
+    return NULL;
+}
+
+/* -------------------------------------------------------------------------
  * ISR callback – called from usbd_cdc_if.c CDC_Receive_FS()
  * Just push bytes into the ring buffer; do NOT parse here.
  * -------------------------------------------------------------------------
@@ -195,9 +268,6 @@ static void dispatch(char *line)
 
     /* ------------------------------------------------------------------ */
     } else if (strcmp(tok, "MAP") == 0) {
-        /* MAP <motor> <p0> <p1> <p2>  – remap logical→physical phase channels
-         * Example: MAP 2 2 0 1  → on motor2, logical CH1 → physical CH3, etc.
-         * Use this to swap phase wires in firmware without rewiring. */
         char *s_mid = strtok(NULL, " \t");
         char *s_p0  = strtok(NULL, " \t");
         char *s_p1  = strtok(NULL, " \t");
@@ -231,6 +301,71 @@ static void dispatch(char *line)
         USBCMD_Send(tx_scratch);
 
     /* ------------------------------------------------------------------ */
+    } else if (strcmp(tok, "SETPIN") == 0) {
+        /* SETPIN <name> <0|1>  –  drive a named GPIO output high or low.
+         * PWM-controlled pins are blocked; use EN/DIS/SET for those. */
+        char *s_name = strtok(NULL, " \t");
+        char *s_val  = strtok(NULL, " \t");
+        if (!s_name || !s_val) {
+            USBCMD_Send("ERR USAGE: SETPIN <name> <0|1>\r\n"); return;
+        }
+        int val = atoi(s_val);
+        if (val != 0 && val != 1) {
+            USBCMD_Send("ERR VALUE must be 0 or 1\r\n"); return;
+        }
+        const PinEntry_t *p = find_pin(s_name);
+        if (!p) {
+            snprintf(tx_scratch, sizeof(tx_scratch), "ERR UNKNOWN_PIN: %s\r\n", s_name);
+            USBCMD_Send(tx_scratch); return;
+        }
+        if (!p->output) {
+            snprintf(tx_scratch, sizeof(tx_scratch), "ERR PIN_IS_INPUT: %s\r\n", s_name);
+            USBCMD_Send(tx_scratch); return;
+        }
+        if (p->pwm_only) {
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "ERR PIN_IS_PWM: %s – use EN/DIS/SET commands\r\n", s_name);
+            USBCMD_Send(tx_scratch); return;
+        }
+        HAL_GPIO_WritePin(p->port, p->pin,
+            val ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        snprintf(tx_scratch, sizeof(tx_scratch), "OK %s=%d\r\n", s_name, val);
+        USBCMD_Send(tx_scratch);
+
+    /* ------------------------------------------------------------------ */
+    } else if (strcmp(tok, "READPIN") == 0) {
+        /* READPIN <name>  –  read the current logic level of any named pin.
+         * Works on both input and output pins. */
+        char *s_name = strtok(NULL, " \t");
+        if (!s_name) {
+            USBCMD_Send("ERR USAGE: READPIN <name>\r\n"); return;
+        }
+        const PinEntry_t *p = find_pin(s_name);
+        if (!p) {
+            snprintf(tx_scratch, sizeof(tx_scratch), "ERR UNKNOWN_PIN: %s\r\n", s_name);
+            USBCMD_Send(tx_scratch); return;
+        }
+        int level = (HAL_GPIO_ReadPin(p->port, p->pin) == GPIO_PIN_SET) ? 1 : 0;
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "OK %s=%d (%s)\r\n", s_name, level, p->output ? "OUT" : "IN");
+        USBCMD_Send(tx_scratch);
+
+    /* ------------------------------------------------------------------ */
+    } else if (strcmp(tok, "PINS") == 0) {
+        /* PINS  –  dump the current level of every pin in the table. */
+        USBCMD_Send("INFO --- Pin States ---\r\n");
+        for (uint32_t i = 0; i < PIN_TABLE_SIZE; i++) {
+            const PinEntry_t *p = &pin_table[i];
+            int level = (HAL_GPIO_ReadPin(p->port, p->pin) == GPIO_PIN_SET) ? 1 : 0;
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "INFO %s=%d (%s%s)\r\n",
+                p->name, level,
+                p->output ? "OUT" : "IN",
+                p->pwm_only ? "/PWM" : "");
+            USBCMD_Send(tx_scratch);
+        }
+
+    /* ------------------------------------------------------------------ */
     } else if (strcmp(tok, "HELP") == 0) {
         USBCMD_Send("INFO Commands:\r\n");
         USBCMD_Send("INFO   PING\r\n");
@@ -245,6 +380,14 @@ static void dispatch(char *line)
         USBCMD_Send("INFO   RESETTICKS [<motor 1-3>]\r\n");
         USBCMD_Send("INFO   MAP  <motor 1-3> <p0> <p1> <p2>  (phase remap 0-2)\r\n");
         USBCMD_Send("INFO   GETMAP <motor 1-3>\r\n");
+        USBCMD_Send("INFO   SETPIN <name> <0|1>  (output GPIO only, not PWM pins)\r\n");
+        USBCMD_Send("INFO   READPIN <name>\r\n");
+        USBCMD_Send("INFO   PINS  (dump all pin states)\r\n");
+        USBCMD_Send("INFO   Pin names: M1HA/HB/HC  M2HA/HB/HC  M3HA/HB/HC\r\n");
+        USBCMD_Send("INFO              M1PHA/PHB/PHC  M1LSA/LSB/LSC (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M2PHA/PHB/PHC  (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M2LSA/LSB/LSC  M3PHA/PHB/PHC (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M3LSA/LSB/LSC  (settable output)\r\n");
         USBCMD_Send("INFO   HELP\r\n");
 
     /* ------------------------------------------------------------------ */
