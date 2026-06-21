@@ -41,17 +41,17 @@ static char tx_scratch[256];
 /* -------------------------------------------------------------------------
  * Pin lookup table
  * Covers all named GPIOs in the project:
- *   - Hall sensor inputs:       M1=PA0-PA2, M2=PA3-PA5, M3=PB10-PB12
- *   - M1 high-side PWM outputs: PA8, PA9, PA10 (TIM1 CH1-3)
- *   - M1 low-side PWM outputs:  PB13, PB14, PB15 (TIM1 CH1N-3N)
- *   - M2 high-side PWM outputs: PA6, PA7, PB0 (TIM3 CH1-3)
- *   - M2 low-side enables:      PA15, PB3, PB5 (GPIO output)
- *   - M3 high-side PWM outputs: PB6, PB7, PB8 (TIM4 CH1-3)
- *   - M3 low-side enables:      PB9, PC13, PC14 (GPIO output)
+ *   - Hall sensor inputs:        M1=PA0-PA2, M2=PA3-PA5, M3=PB10-PB12
+ *   - M1 high-side PWM outputs:  PA8, PA9, PA10 (TIM1 CH1-3)   → M1HSA/B/C
+ *   - M1 low-side PWM outputs:   PB13, PB14, PB15 (TIM1 CH1N-3N) → M1LSA/B/C
+ *   - M2 high-side PWM outputs:  PA6, PA7, PB0 (TIM3 CH1-3)    → M2HSA/B/C
+ *   - M2 low-side enables:       PA15, PB3, PB5 (GPIO output)   → M2LSA/B/C
+ *   - M3 high-side PWM outputs:  PB6, PB7, PB8 (TIM4 CH1-3)    → M3HSA/B/C
+ *   - M3 low-side enables:       PB9, PC13, PC14 (GPIO output)  → M3LSA/B/C
  *
- * SETPIN is blocked on PWM-controlled pins (M1 high/low-side, M2/M3
- * high-side) to avoid fighting the timer hardware.  Use EN/DIS/SET
- * commands for those.  Low-side enable GPIOs are freely settable.
+ * SETPIN is blocked on PWM-controlled pins (M1/M2/M3 high-side and M1
+ * low-side) to avoid fighting the timer hardware.  Use EN/DIS/SET
+ * commands for those.  Low-side enable GPIOs (M2/M3 LS) are freely settable.
  * -------------------------------------------------------------------------
  */
 typedef struct {
@@ -76,25 +76,25 @@ static const PinEntry_t pin_table[] = {
     { "M3HB",  GPIOB, GPIO_PIN_11, 0, 0 },
     { "M3HC",  GPIOB, GPIO_PIN_12, 0, 0 },
     /* M1 high-side PWM (TIM1 CH1-3) – read-only via READPIN */
-    { "M1PHA", GPIOA, GPIO_PIN_8,  1, 1 },
-    { "M1PHB", GPIOA, GPIO_PIN_9,  1, 1 },
-    { "M1PHC", GPIOA, GPIO_PIN_10, 1, 1 },
+    { "M1HSA", GPIOA, GPIO_PIN_8,  1, 1 },
+    { "M1HSB", GPIOA, GPIO_PIN_9,  1, 1 },
+    { "M1HSC", GPIOA, GPIO_PIN_10, 1, 1 },
     /* M1 low-side PWM (TIM1 CH1N-3N) – read-only via READPIN */
     { "M1LSA", GPIOB, GPIO_PIN_13, 1, 1 },
     { "M1LSB", GPIOB, GPIO_PIN_14, 1, 1 },
     { "M1LSC", GPIOB, GPIO_PIN_15, 1, 1 },
     /* M2 high-side PWM (TIM3 CH1-3) – read-only via READPIN */
-    { "M2PHA", GPIOA, GPIO_PIN_6,  1, 1 },
-    { "M2PHB", GPIOA, GPIO_PIN_7,  1, 1 },
-    { "M2PHC", GPIOB, GPIO_PIN_0,  1, 1 },
+    { "M2HSA", GPIOA, GPIO_PIN_6,  1, 1 },
+    { "M2HSB", GPIOA, GPIO_PIN_7,  1, 1 },
+    { "M2HSC", GPIOB, GPIO_PIN_0,  1, 1 },
     /* M2 low-side enables (GPIO output) – freely settable */
     { "M2LSA", GPIOA, GPIO_PIN_15, 1, 0 },
     { "M2LSB", GPIOB, GPIO_PIN_3,  1, 0 },
     { "M2LSC", GPIOB, GPIO_PIN_5,  1, 0 },
     /* M3 high-side PWM (TIM4 CH1-3) – read-only via READPIN */
-    { "M3PHA", GPIOB, GPIO_PIN_6,  1, 1 },
-    { "M3PHB", GPIOB, GPIO_PIN_7,  1, 1 },
-    { "M3PHC", GPIOB, GPIO_PIN_8,  1, 1 },
+    { "M3HSA", GPIOB, GPIO_PIN_6,  1, 1 },
+    { "M3HSB", GPIOB, GPIO_PIN_7,  1, 1 },
+    { "M3HSC", GPIOB, GPIO_PIN_8,  1, 1 },
     /* M3 low-side enables (GPIO output) – freely settable */
     { "M3LSA", GPIOB, GPIO_PIN_9,  1, 0 },
     { "M3LSB", GPIOC, GPIO_PIN_13, 1, 0 },
@@ -384,9 +384,9 @@ static void dispatch(char *line)
         USBCMD_Send("INFO   READPIN <name>\r\n");
         USBCMD_Send("INFO   PINS  (dump all pin states)\r\n");
         USBCMD_Send("INFO   Pin names: M1HA/HB/HC  M2HA/HB/HC  M3HA/HB/HC\r\n");
-        USBCMD_Send("INFO              M1PHA/PHB/PHC  M1LSA/LSB/LSC (PWM, read-only)\r\n");
-        USBCMD_Send("INFO              M2PHA/PHB/PHC  (PWM, read-only)\r\n");
-        USBCMD_Send("INFO              M2LSA/LSB/LSC  M3PHA/PHB/PHC (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M1HSA/HSB/HSC  M1LSA/LSB/LSC (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M2HSA/HSB/HSC  (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M2LSA/LSB/LSC  M3HSA/HSB/HSC (PWM, read-only)\r\n");
         USBCMD_Send("INFO              M3LSA/LSB/LSC  (settable output)\r\n");
         USBCMD_Send("INFO   HELP\r\n");
 
