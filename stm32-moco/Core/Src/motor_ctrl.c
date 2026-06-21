@@ -134,13 +134,6 @@ MotorState_t g_motor[MOTOR_COUNT];
  * -------------------------------------------------------------------------
  */
 
-/* Set PWM duty on one channel.  Pulse=0 guarantees LOW before start. */
-static void set_pwm(uint8_t mid, uint8_t phys_ch, uint16_t duty)
-{
-    const MotorHW_t *hw = &MOTOR_HW[mid];
-    __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_ch], duty);
-}
-
 /* De-assert all high-side PWM (pulse=0) and all low-side GPIOs */
 static void all_off(uint8_t mid)
 {
