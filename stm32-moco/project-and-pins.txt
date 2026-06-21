@@ -1,75 +1,113 @@
 ## Project Objective
-The goal is to implement a 3-axis Brushless DC (BLDC) motor controller on a single STM32F103C8T6 Blue Pill development board. The system utilizes 18 digital outputs for phase and driver control, 9 digital inputs for Hall position feedback, and relies on USB CDC (Virtual COM Port) for communication with the Atomic Pi Linux host, plus USB DFU (BOOT0 jumper) for firmware updates. SWD debug (PA13/PA14) remains active for live debugging via ST-Link.
+Implement a 3-axis Brushless DC (BLDC) motor controller on a single
+STM32F103C8T6 Blue Pill development board. The system uses 18 digital
+outputs for phase and driver control, 9 digital inputs for Hall position
+feedback, and USB CDC for runtime command/debug access.
 
 ------------------------------
-## Blue Pill Pin Layout Matrix
-This configuration uses 29 out of 32 available GPIO pins, isolating USB data and debug ports.
+## Pin Assignment (source of truth for all firmware)
 
-| Target Component       | Function / Signal Type                        | Blue Pill Pins        | Internal MCU Resource                          |
-|------------------------|-----------------------------------------------|-----------------------|------------------------------------------------|
-| Motor 1 (TIM1 - Advanced) | Phase High-Side PWM                        | A8, A9, A10           | TIM1_CH1, CH2, CH3                             |
-|                        | Phase Low-Side PWM (Complementary)            | B13, B14, B15         | TIM1_CH1N, CH2N, CH3N (hardware dead-time)     |
-| Motor 2 (TIM3 - General)  | Phase High-Side PWM                        | A6, A7, B0            | TIM3_CH1, CH2, CH3                             |
-|                        | Phase Low-Side Enable Lines                   | A15, B3, B5           | Standard GPIO Outputs                          |
-| Motor 3 (TIM4 - General)  | Phase High-Side PWM                        | B6, B7, B8            | TIM4_CH1, CH2, CH3                             |
-|                        | Phase Low-Side Enable Lines                   | B9, PC13, PC14        | Standard GPIO Outputs                          |
-| Hall Sensors           | M1 Position Inputs                            | A0, A1, A2            | GPIO Input, Pull-up                            |
-|                        | M2 Position Inputs                            | A3, A4, A5            | GPIO Input, Pull-up                            |
-|                        | M3 Position Inputs                            | B10, B11, B12         | GPIO Input, Pull-up                            |
-| System Lines           | USB CDC / DFU                                 | A11, A12              | Native USB D- / D+                             |
-|                        | SWD Debug                                     | A13, A14              | SWDIO / SWCLK                                  |
-
-------------------------------
-## Implementation Strategy
-
-   1. Hardware Safety: Place 10kΩ pull-down resistors on the Motor 1 lines (A8-A10, B13-B15). This prevents short circuits when pins float during MCU boot or flashing. Motors 2 and 3 low-side enable pins (A15, B3, B5, B9, PC13, PC14) default LOW at boot — no enables fire until explicitly commanded.
-
-   2. Frequency Generation: TIM1, TIM3, and TIM4 are configured with Prescaler=0 and ARR=1439, producing 25 kHz PWM at 72 MHz system clock (72,000,000 / 1440 = 50,000 half-periods → 25 kHz). This is above the audible range and provides 1440 steps of duty cycle resolution.
-
-   3. Advanced Timing (Motor 1): Use TIM1's hardware dead-time engine (HAL_TIMEx_ConfigBreakDeadTime) to force a microsecond delay between high and low-side switching. Set active polarities to HIGH and Idle States to RESET to guarantee outputs drop to 0V when disabled. Motors 2 and 3 rely on external hardware shoot-through protection; their low-side enables are driven as GPIO outputs.
-
-   4. Commutation Loop: Poll or interrupt-capture the 9 Hall input pins. Use the 3-bit binary state per motor to index into a 6-step commutation lookup table. The table sets PWM duty on the active high-side channel and asserts the corresponding low-side enable GPIO for each step.
-
-   5. USB Communication: USB CDC Virtual COM Port (A11/A12) is used for bidirectional communication with the Atomic Pi Linux host. The STM32 receives ASCII or binary motor commands and returns Hall-derived position/speed feedback. The same USB port supports DFU firmware flashing when BOOT0 jumper is set to 1.
-
-   6. Debug: SWD on PA13/PA14 remains active at all times. Use ST-Link for live variable inspection, breakpoints, and commutation step verification during bring-up.
-
-------------------------------
-## Motor Outputs (18 Pins Total)
-
-### Motor 1 (Advanced Timer - TIM1)
-Uses the line buffer. TIM1 provides automatic hardware dead-time generation.
-- High-Side:  A8 (CH1), A9 (CH2), A10 (CH3)
-- Low-Side:   B13 (CH1N), B14 (CH2N), B15 (CH3N)
-
-### Motor 2 (General Purpose Timer - TIM3)
-Hardware driver prevents shoot-through. Low-side driven by GPIO enables.
-- High-Side PWM:     A6 (CH1), A7 (CH2), B0 (CH3)
-- Low-Side Enables:  A15, B3, B5 (GPIO Output, default LOW)
-
-### Motor 3 (General Purpose Timer - TIM4)
-Hardware driver prevents shoot-through. Low-side driven by GPIO enables.
-- High-Side PWM:     B6 (CH1), B7 (CH2), B8 (CH3)
-- Low-Side Enables:  B9, PC13, PC14 (GPIO Output, default LOW)
-
-------------------------------
-## Hall Effect Inputs (9 Pins Total)
-All configured as GPIO Input with internal pull-up resistors enabled.
-- Motor 1 Halls: A0, A1, A2
-- Motor 2 Halls: A3, A4, A5
-- Motor 3 Halls: B10, B11, B12
+| Signal Name       | Blue Pill Pin | MCU Resource         | Direction | Notes                          |
+|-------------------|---------------|----------------------|-----------|--------------------------------|
+| M1HA              | A0            | GPIO_Input, PULLUP   | IN        | Motor 1 Hall A                 |
+| M1HB              | A1            | GPIO_Input, PULLUP   | IN        | Motor 1 Hall B                 |
+| M1HC              | A2            | GPIO_Input, PULLUP   | IN        | Motor 1 Hall C                 |
+| M2HA              | A3            | GPIO_Input, PULLUP   | IN        | Motor 2 Hall A                 |
+| M2HB              | A4            | GPIO_Input, PULLUP   | IN        | Motor 2 Hall B                 |
+| M2HC              | A5            | GPIO_Input, PULLUP   | IN        | Motor 2 Hall C                 |
+| M3HA              | A6            | GPIO_Input, PULLUP   | IN        | Motor 3 Hall A                 |
+| M3HB              | A7            | GPIO_Input, PULLUP   | IN        | Motor 3 Hall B                 |
+| M3HC              | B10           | GPIO_Input, PULLUP   | IN        | Motor 3 Hall C                 |
+| M1HSA             | A8            | TIM1_CH1             | OUT/PWM   | Motor 1 high-side phase A      |
+| M1HSB             | A9            | TIM1_CH2             | OUT/PWM   | Motor 1 high-side phase B      |
+| M1HSC             | A10           | TIM1_CH3             | OUT/PWM   | Motor 1 high-side phase C      |
+| M1LSA             | B13           | TIM1_CH1N            | OUT/PWM   | Motor 1 low-side phase A (comp)|
+| M1LSB             | B14           | TIM1_CH2N            | OUT/PWM   | Motor 1 low-side phase B (comp)|
+| M1LSC             | B15           | TIM1_CH3N            | OUT/PWM   | Motor 1 low-side phase C (comp)|
+| M2HSA             | B6            | TIM4_CH1             | OUT/PWM   | Motor 2 high-side phase A      |
+| M2HSB             | B7            | TIM4_CH2             | OUT/PWM   | Motor 2 high-side phase B      |
+| M2HSC             | B8            | TIM4_CH3             | OUT/PWM   | Motor 2 high-side phase C      |
+| M2LSA             | A15           | GPIO_Output          | OUT       | Motor 2 low-side enable A      |
+| M2LSB             | B3            | GPIO_Output          | OUT       | Motor 2 low-side enable B      |
+| M2LSC             | B5            | GPIO_Output          | OUT       | Motor 2 low-side enable C      |
+| M3HSA             | B4            | TIM3_CH1             | OUT/PWM   | Motor 3 high-side phase A      |
+| M3HSB             | B0            | TIM3_CH3             | OUT/PWM   | Motor 3 high-side phase B      |
+| M3HSC             | B1            | TIM3_CH4             | OUT/PWM   | Motor 3 high-side phase C      |
+| M3LSA             | B9            | GPIO_Output          | OUT       | Motor 3 low-side enable A      |
+| M3LSB             | B11           | GPIO_Output          | OUT       | Motor 3 low-side enable B      |
+| M3LSC             | B12           | GPIO_Output          | OUT       | Motor 3 low-side enable C      |
+| USB_DM            | A11           | USB D-               | SYS       | USB CDC                        |
+| USB_DP            | A12           | USB D+               | SYS       | USB CDC                        |
+| SWDIO             | A13           | SYS_JTMS-SWDIO       | SYS       | SWD debug                      |
+| SWCLK             | A14           | SYS_JTCK-SWCLK       | SYS       | SWD debug                      |
 
 ------------------------------
 ## Timer Configuration
-| Timer | Motor | Prescaler | ARR  | PWM Freq | Resolution |
-|-------|-------|-----------|------|----------|------------|
-| TIM1  | M1    | 0         | 1439 | 25 kHz   | 1440 steps |
-| TIM3  | M2    | 0         | 1439 | 25 kHz   | 1440 steps |
-| TIM4  | M3    | 0         | 1439 | 25 kHz   | 1440 steps |
+
+All three timers: Prescaler=0, ARR=1439, 72 MHz clock → 50 kHz PWM.
+
+  TIM1  – Motor 1, advanced timer.  Channels CH1/CH2/CH3 + CH1N/CH2N/CH3N.
+           Hardware dead-time via HAL_TIMEx_ConfigBreakDeadTime.
+           Pull-down resistors (10kΩ) on all six Motor 1 pins (A8-A10, B13-B15)
+           to prevent shoot-through on boot/flash.
+
+  TIM4  – Motor 2, general-purpose.  Channels CH1(B6) / CH2(B7) / CH3(B8).
+           Low-side controlled by GPIO enables: A15, B3, B5.
+           Hardware driver prevents shoot-through; no dead-time needed in FW.
+
+  TIM3  – Motor 3, general-purpose.  Channels CH1(B4) / CH3(B0) / CH4(B1).
+           Low-side controlled by GPIO enables: B9, B11, B12.
+           Hardware driver prevents shoot-through; no dead-time needed in FW.
 
 ------------------------------
-## Clock Configuration
-- HSE: 8 MHz external crystal (Blue Pill onboard)
-- PLL: x9 → SYSCLK = 72 MHz
-- USB prescaler: /1.5 → USB clock = 48 MHz
-- APB1: 36 MHz | APB2: 72 MHz | TIM clocks: 72 MHz
+## Implementation Notes
+
+  1. All PWM channels initialised with Pulse=0.  Timers start but outputs
+     stay LOW until Motor_Enable() is called.
+  2. Motor_SafeAll() zeroes all PWM and GPIO enables immediately – safe
+     to call from any context.
+  3. Hall inputs use internal pull-ups.  Unconnected Halls will read HIGH
+     (state 0b111 = invalid, motor stays stopped).
+  4. 6-step commutation: poll Hall state → index COMMUT_FWD/REV table →
+     set active high/low channel pair.
+  5. Phase map (MAP command) remaps logical CH0/1/2 to physical channels
+     to correct for motor wiring order without re-soldering.
+  6. Firmware update: set BOOT0 jumper HIGH, power-cycle, flash with
+     STM32CubeProgrammer over USB.
+
+------------------------------
+## CubeMX IOC – Required Changes
+
+The current stm32-moco.ioc does NOT match this wiring.  Before regenerating
+code, make the following changes in STM32CubeMX:
+
+  Pins to REMOVE current assignment:
+    PA6  – currently TIM3_CH1  → reassign to GPIO_Input (M3HA)
+    PA7  – currently TIM3_CH2  → reassign to GPIO_Input (M3HB)
+    PB0  – currently TIM3_CH3  → reassign to TIM3_CH3 (keep, correct)
+    PB1  – currently GPIO_Output → reassign to TIM3_CH4 (M3HSC)
+    PB4  – currently GPIO_Output → reassign to TIM3_CH1 (M3HSA, needs AFIO partial remap)
+    PB6  – currently TIM4_CH1  → keep as TIM4_CH1 (M2HSA) - correct
+    PB7  – currently TIM4_CH2  → keep as TIM4_CH2 (M2HSB) - correct
+    PB8  – currently TIM4_CH3  → keep as TIM4_CH3 (M2HSC) - correct
+    PB11 – currently GPIO_Input → reassign to GPIO_Output (M3LSB)
+    PB12 – currently GPIO_Input → reassign to GPIO_Output (M3LSC)
+    PC13 – currently GPIO_Output → not used (remove or leave)
+    PC14 – currently GPIO_Output → not used (remove or leave)
+
+  Summary of IOC changes needed:
+    PA6   GPIO_Input  PULLUP   (M3HA)
+    PA7   GPIO_Input  PULLUP   (M3HB)
+    PB1   TIM3_CH4             (M3HSC – requires TIM3 partial remap in AFIO)
+    PB4   TIM3_CH1             (M3HSA – requires TIM3 partial remap in AFIO)
+    PB11  GPIO_Output          (M3LSB)
+    PB12  GPIO_Output          (M3LSC)
+    PC13  reset to default (no function)
+    PC14  reset to default (no function)
+
+  IMPORTANT – TIM3 Partial Remap:
+    PB4=TIM3_CH1 and PB1=TIM3_CH4 require AFIO_MAPR TIM3 partial remap.
+    In CubeMX: Pinout → PB4 → TIM3_CH1 will prompt you to enable the remap.
+    This remap also moves TIM3_CH2 to PB5 – but PB5 is M2LSC (GPIO output).
+    To avoid conflict, Motor 3 only uses CH1(B4), CH3(B0), CH4(B1);
+    CH2 is intentionally unused.

@@ -11,6 +11,12 @@
  *   Index = 3-bit Hall state (HA<<2 | HB<<1 | HC).
  *   Entry = {high_ch, low_ch}  (channel index 0-2 → CH1/CH2/CH3).
  *   Invalid states 0b000 and 0b111 map to STOP (step 255).
+ *
+ * Pin assignments (source of truth: project-and-pins.txt):
+ *   Motor 1 – TIM1: HS=A8/A9/A10, LS=B13/B14/B15 (complementary)
+ *   Motor 2 – TIM4: HS=B6/B7/B8,  LS enables=A15/B3/B5 (GPIO)
+ *   Motor 3 – TIM3: HS=B4/B0/B1,  LS enables=B9/B11/B12 (GPIO)
+ *   Hall M1: A0/A1/A2  Hall M2: A3/A4/A5  Hall M3: A6/A7/B10
  * =========================================================================
  */
 
@@ -79,35 +85,40 @@ typedef struct {
 } MotorHW_t;
 
 static const MotorHW_t MOTOR_HW[MOTOR_COUNT] = {
-    /* Motor 1 – TIM1 (advanced), hardware dead-time, complementary outputs */
+    /* Motor 1 – TIM1 (advanced), hardware dead-time, complementary outputs
+     * HS: A8(CH1), A9(CH2), A10(CH3)
+     * LS: B13(CH1N), B14(CH2N), B15(CH3N) – no separate GPIO needed
+     * Hall: A0, A1, A2 */
     {
         .htim       = &htim1,
-        /* Low-side for TIM1 are complementary (CHxN) – no separate GPIO */
         .ls_port    = {NULL, NULL, NULL},
         .ls_pin     = {0, 0, 0},
-        /* Hall: A0, A1, A2 */
         .hall_port  = {GPIOA, GPIOA, GPIOA},
         .hall_pin   = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2},
         .is_advanced = 1
     },
-    /* Motor 2 – TIM3, GPIO low-side enables: A15, B3, B5 */
+    /* Motor 2 – TIM4, GPIO low-side enables
+     * HS: B6(CH1), B7(CH2), B8(CH3)
+     * LS enables: A15, B3, B5
+     * Hall: A3, A4, A5 */
     {
-        .htim       = &htim3,
+        .htim       = &htim4,
         .ls_port    = {GPIOA, GPIOB, GPIOB},
         .ls_pin     = {GPIO_PIN_15, GPIO_PIN_3, GPIO_PIN_5},
-        /* Hall: A3, A4, A5 */
         .hall_port  = {GPIOA, GPIOA, GPIOA},
         .hall_pin   = {GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5},
         .is_advanced = 0
     },
-    /* Motor 3 – TIM4, GPIO low-side enables: B9, PC13, PC14 */
+    /* Motor 3 – TIM3, GPIO low-side enables
+     * HS: B4(CH1), B0(CH3), B1(CH4)
+     * LS enables: B9, B11, B12
+     * Hall: A6, A7, B10 */
     {
-        .htim       = &htim4,
-        .ls_port    = {GPIOB, GPIOC, GPIOC},
-        .ls_pin     = {GPIO_PIN_9, GPIO_PIN_13, GPIO_PIN_14},
-        /* Hall: B10, B11, B12 */
-        .hall_port  = {GPIOB, GPIOB, GPIOB},
-        .hall_pin   = {GPIO_PIN_10, GPIO_PIN_11, GPIO_PIN_12},
+        .htim       = &htim3,
+        .ls_port    = {GPIOB, GPIOB, GPIOB},
+        .ls_pin     = {GPIO_PIN_9, GPIO_PIN_11, GPIO_PIN_12},
+        .hall_port  = {GPIOA, GPIOA, GPIOB},
+        .hall_pin   = {GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_10},
         .is_advanced = 0
     }
 };

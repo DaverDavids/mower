@@ -39,30 +39,25 @@ static uint16_t line_pos = 0;
 static char tx_scratch[256];
 
 /* -------------------------------------------------------------------------
- * Pin lookup table  (source of truth: stm32-moco.ioc)
+ * Pin lookup table  (source of truth: project-and-pins.txt)
  *
  * Hall sensor inputs (GPIO_Input, pull-up):
  *   M1HA/HB/HC  = PA0, PA1, PA2
  *   M2HA/HB/HC  = PA3, PA4, PA5
- *   M3HA/HB/HC  = PB10, PB11, PB12
+ *   M3HA/HB/HC  = PA6, PA7, PB10
  *
  * Motor 1 – TIM1 (advanced timer, hardware dead-time):
- *   M1HSA/HSB/HSC  = PA8, PA9, PA10   (TIM1 CH1-3, high-side PWM)
- *   M1LSA/LSB/LSC  = PB13, PB14, PB15 (TIM1 CH1N-3N, low-side PWM)
+ *   M1HSA/HSB/HSC  = PA8,  PA9,  PA10  (TIM1 CH1-3,  high-side PWM)
+ *   M1LSA/LSB/LSC  = PB13, PB14, PB15  (TIM1 CH1N-3N, low-side PWM)
  *   All six are pwm_only – use EN/DIS/SET commands.
  *
- * Motor 2 – TIM3 (general-purpose timer):
- *   M2HSA/HSB/HSC  = PA6, PA7, PB0    (TIM3 CH1-3, high-side PWM)
+ * Motor 2 – TIM4 (general-purpose timer):
+ *   M2HSA/HSB/HSC  = PB6, PB7, PB8    (TIM4 CH1-3, high-side PWM)
  *   M2LSA/LSB/LSC  = PA15, PB3, PB5   (GPIO output, low-side enables)
  *
- * Motor 3 – TIM4 (general-purpose timer):
- *   M3HSA/HSB/HSC  = PB6, PB7, PB8    (TIM4 CH1-3, high-side PWM)
- *   M3LSA/LSB/LSC  = PB9, PC13, PC14  (GPIO output, low-side enables)
- *
- * Spare GPIO outputs (configured in IOC, no assigned function yet):
- *   SPARE_PB1  = PB1
- *   SPARE_PB4  = PB4
- *   SPARE_PC15 = PC15
+ * Motor 3 – TIM3 (general-purpose timer):
+ *   M3HSA/HSB/HSC  = PB4, PB0, PB1    (TIM3 CH1/CH3/CH4, high-side PWM)
+ *   M3LSA/LSB/LSC  = PB9, PB11, PB12  (GPIO output, low-side enables)
  *
  * SETPIN is blocked on pwm_only pins.  Use EN/DIS/SET for those.
  * -------------------------------------------------------------------------
@@ -77,45 +72,41 @@ typedef struct {
 
 static const PinEntry_t pin_table[] = {
     /* Hall inputs – Motor 1 */
-    { "M1HA",      GPIOA, GPIO_PIN_0,  0, 0 },
-    { "M1HB",      GPIOA, GPIO_PIN_1,  0, 0 },
-    { "M1HC",      GPIOA, GPIO_PIN_2,  0, 0 },
+    { "M1HA",  GPIOA, GPIO_PIN_0,  0, 0 },
+    { "M1HB",  GPIOA, GPIO_PIN_1,  0, 0 },
+    { "M1HC",  GPIOA, GPIO_PIN_2,  0, 0 },
     /* Hall inputs – Motor 2 */
-    { "M2HA",      GPIOA, GPIO_PIN_3,  0, 0 },
-    { "M2HB",      GPIOA, GPIO_PIN_4,  0, 0 },
-    { "M2HC",      GPIOA, GPIO_PIN_5,  0, 0 },
+    { "M2HA",  GPIOA, GPIO_PIN_3,  0, 0 },
+    { "M2HB",  GPIOA, GPIO_PIN_4,  0, 0 },
+    { "M2HC",  GPIOA, GPIO_PIN_5,  0, 0 },
     /* Hall inputs – Motor 3 */
-    { "M3HA",      GPIOB, GPIO_PIN_10, 0, 0 },
-    { "M3HB",      GPIOB, GPIO_PIN_11, 0, 0 },
-    { "M3HC",      GPIOB, GPIO_PIN_12, 0, 0 },
+    { "M3HA",  GPIOA, GPIO_PIN_6,  0, 0 },
+    { "M3HB",  GPIOA, GPIO_PIN_7,  0, 0 },
+    { "M3HC",  GPIOB, GPIO_PIN_10, 0, 0 },
     /* M1 high-side PWM (TIM1 CH1-3) – read-only via READPIN */
-    { "M1HSA",     GPIOA, GPIO_PIN_8,  1, 1 },
-    { "M1HSB",     GPIOA, GPIO_PIN_9,  1, 1 },
-    { "M1HSC",     GPIOA, GPIO_PIN_10, 1, 1 },
+    { "M1HSA", GPIOA, GPIO_PIN_8,  1, 1 },
+    { "M1HSB", GPIOA, GPIO_PIN_9,  1, 1 },
+    { "M1HSC", GPIOA, GPIO_PIN_10, 1, 1 },
     /* M1 low-side PWM (TIM1 CH1N-3N) – read-only via READPIN */
-    { "M1LSA",     GPIOB, GPIO_PIN_13, 1, 1 },
-    { "M1LSB",     GPIOB, GPIO_PIN_14, 1, 1 },
-    { "M1LSC",     GPIOB, GPIO_PIN_15, 1, 1 },
-    /* M2 high-side PWM (TIM3 CH1-3) – read-only via READPIN */
-    { "M2HSA",     GPIOA, GPIO_PIN_6,  1, 1 },
-    { "M2HSB",     GPIOA, GPIO_PIN_7,  1, 1 },
-    { "M2HSC",     GPIOB, GPIO_PIN_0,  1, 1 },
+    { "M1LSA", GPIOB, GPIO_PIN_13, 1, 1 },
+    { "M1LSB", GPIOB, GPIO_PIN_14, 1, 1 },
+    { "M1LSC", GPIOB, GPIO_PIN_15, 1, 1 },
+    /* M2 high-side PWM (TIM4 CH1-3) – read-only via READPIN */
+    { "M2HSA", GPIOB, GPIO_PIN_6,  1, 1 },
+    { "M2HSB", GPIOB, GPIO_PIN_7,  1, 1 },
+    { "M2HSC", GPIOB, GPIO_PIN_8,  1, 1 },
     /* M2 low-side enables (GPIO output) – freely settable */
-    { "M2LSA",     GPIOA, GPIO_PIN_15, 1, 0 },
-    { "M2LSB",     GPIOB, GPIO_PIN_3,  1, 0 },
-    { "M2LSC",     GPIOB, GPIO_PIN_5,  1, 0 },
-    /* M3 high-side PWM (TIM4 CH1-3) – read-only via READPIN */
-    { "M3HSA",     GPIOB, GPIO_PIN_6,  1, 1 },
-    { "M3HSB",     GPIOB, GPIO_PIN_7,  1, 1 },
-    { "M3HSC",     GPIOB, GPIO_PIN_8,  1, 1 },
+    { "M2LSA", GPIOA, GPIO_PIN_15, 1, 0 },
+    { "M2LSB", GPIOB, GPIO_PIN_3,  1, 0 },
+    { "M2LSC", GPIOB, GPIO_PIN_5,  1, 0 },
+    /* M3 high-side PWM (TIM3 CH1/CH3/CH4) – read-only via READPIN */
+    { "M3HSA", GPIOB, GPIO_PIN_4,  1, 1 },
+    { "M3HSB", GPIOB, GPIO_PIN_0,  1, 1 },
+    { "M3HSC", GPIOB, GPIO_PIN_1,  1, 1 },
     /* M3 low-side enables (GPIO output) – freely settable */
-    { "M3LSA",     GPIOB, GPIO_PIN_9,  1, 0 },
-    { "M3LSB",     GPIOC, GPIO_PIN_13, 1, 0 },
-    { "M3LSC",     GPIOC, GPIO_PIN_14, 1, 0 },
-    /* Spare GPIO outputs (in IOC, no assigned function yet) */
-    { "SPARE_PB1",  GPIOB, GPIO_PIN_1,  1, 0 },
-    { "SPARE_PB4",  GPIOB, GPIO_PIN_4,  1, 0 },
-    { "SPARE_PC15", GPIOC, GPIO_PIN_15, 1, 0 },
+    { "M3LSA", GPIOB, GPIO_PIN_9,  1, 0 },
+    { "M3LSB", GPIOB, GPIO_PIN_11, 1, 0 },
+    { "M3LSC", GPIOB, GPIO_PIN_12, 1, 0 },
 };
 
 #define PIN_TABLE_SIZE (sizeof(pin_table) / sizeof(pin_table[0]))
@@ -319,8 +310,6 @@ static void dispatch(char *line)
 
     /* ------------------------------------------------------------------ */
     } else if (strcmp(tok, "SETPIN") == 0) {
-        /* SETPIN <name> <0|1>  –  drive a named GPIO output high or low.
-         * PWM-controlled pins are blocked; use EN/DIS/SET for those. */
         char *s_name = strtok(NULL, " \t");
         char *s_val  = strtok(NULL, " \t");
         if (!s_name || !s_val) {
@@ -351,8 +340,6 @@ static void dispatch(char *line)
 
     /* ------------------------------------------------------------------ */
     } else if (strcmp(tok, "READPIN") == 0) {
-        /* READPIN <name>  –  read the current logic level of any named pin.
-         * Works on both input and output pins. */
         char *s_name = strtok(NULL, " \t");
         if (!s_name) {
             USBCMD_Send("ERR USAGE: READPIN <name>\r\n"); return;
@@ -369,7 +356,6 @@ static void dispatch(char *line)
 
     /* ------------------------------------------------------------------ */
     } else if (strcmp(tok, "PINS") == 0) {
-        /* PINS  –  dump the current level of every pin in the table. */
         USBCMD_Send("INFO --- Pin States ---\r\n");
         for (uint32_t i = 0; i < PIN_TABLE_SIZE; i++) {
             const PinEntry_t *p = &pin_table[i];
@@ -397,15 +383,13 @@ static void dispatch(char *line)
         USBCMD_Send("INFO   RESETTICKS [<motor 1-3>]\r\n");
         USBCMD_Send("INFO   MAP  <motor 1-3> <p0> <p1> <p2>  (phase remap 0-2)\r\n");
         USBCMD_Send("INFO   GETMAP <motor 1-3>\r\n");
-        USBCMD_Send("INFO   SETPIN <name> <0|1>  (output GPIO only, not PWM pins)\r\n");
+        USBCMD_Send("INFO   SETPIN <name> <0|1>  (GPIO output only, not PWM pins)\r\n");
         USBCMD_Send("INFO   READPIN <name>\r\n");
         USBCMD_Send("INFO   PINS  (dump all pin states)\r\n");
         USBCMD_Send("INFO   Pin names: M1HA/HB/HC  M2HA/HB/HC  M3HA/HB/HC\r\n");
-        USBCMD_Send("INFO              M1HSA/HSB/HSC  M1LSA/LSB/LSC (PWM, read-only)\r\n");
-        USBCMD_Send("INFO              M2HSA/HSB/HSC  (PWM, read-only)\r\n");
-        USBCMD_Send("INFO              M2LSA/LSB/LSC  M3HSA/HSB/HSC (PWM, read-only)\r\n");
-        USBCMD_Send("INFO              M3LSA/LSB/LSC  (settable output)\r\n");
-        USBCMD_Send("INFO              SPARE_PB1  SPARE_PB4  SPARE_PC15  (settable output)\r\n");
+        USBCMD_Send("INFO              M1HSA/B/C  M1LSA/B/C  (PWM, read-only)\r\n");
+        USBCMD_Send("INFO              M2HSA/B/C  (PWM read-only)  M2LSA/B/C (settable)\r\n");
+        USBCMD_Send("INFO              M3HSA/B/C  (PWM read-only)  M3LSA/B/C (settable)\r\n");
         USBCMD_Send("INFO   HELP\r\n");
 
     /* ------------------------------------------------------------------ */
@@ -439,12 +423,11 @@ void USBCMD_Process(void)
         uint8_t c  = rx_buf[rx_tail];
         rx_tail    = (rx_tail + 1U) % RX_BUF_SIZE;
 
-        if (c == '\r') continue;    /* ignore CR in CRLF pairs */
+        if (c == '\r') continue;
 
         if (c == '\n' || c == '\0') {
             if (line_pos > 0) {
                 line_buf[line_pos] = '\0';
-                /* Convert to uppercase for case-insensitive matching */
                 for (uint16_t i = 0; i < line_pos; i++) {
                     if (line_buf[i] >= 'a' && line_buf[i] <= 'z') {
                         line_buf[i] -= 32;
@@ -457,7 +440,6 @@ void USBCMD_Process(void)
             if (line_pos < LINE_BUF_SIZE - 1U) {
                 line_buf[line_pos++] = (char)c;
             }
-            /* Silently drop overlong lines */
         }
     }
 }
