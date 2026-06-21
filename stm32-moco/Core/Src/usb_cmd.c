@@ -39,19 +39,32 @@ static uint16_t line_pos = 0;
 static char tx_scratch[256];
 
 /* -------------------------------------------------------------------------
- * Pin lookup table
- * Covers all named GPIOs in the project:
- *   - Hall sensor inputs:        M1=PA0-PA2, M2=PA3-PA5, M3=PB10-PB12
- *   - M1 high-side PWM outputs:  PA8, PA9, PA10 (TIM1 CH1-3)   → M1HSA/B/C
- *   - M1 low-side PWM outputs:   PB13, PB14, PB15 (TIM1 CH1N-3N) → M1LSA/B/C
- *   - M2 high-side PWM outputs:  PA6, PA7, PB0 (TIM3 CH1-3)    → M2HSA/B/C
- *   - M2 low-side enables:       PA15, PB3, PB5 (GPIO output)   → M2LSA/B/C
- *   - M3 high-side PWM outputs:  PB6, PB7, PB8 (TIM4 CH1-3)    → M3HSA/B/C
- *   - M3 low-side enables:       PB9, PC13, PC14 (GPIO output)  → M3LSA/B/C
+ * Pin lookup table  (source of truth: stm32-moco.ioc)
  *
- * SETPIN is blocked on PWM-controlled pins (M1/M2/M3 high-side and M1
- * low-side) to avoid fighting the timer hardware.  Use EN/DIS/SET
- * commands for those.  Low-side enable GPIOs (M2/M3 LS) are freely settable.
+ * Hall sensor inputs (GPIO_Input, pull-up):
+ *   M1HA/HB/HC  = PA0, PA1, PA2
+ *   M2HA/HB/HC  = PA3, PA4, PA5
+ *   M3HA/HB/HC  = PB10, PB11, PB12
+ *
+ * Motor 1 – TIM1 (advanced timer, hardware dead-time):
+ *   M1HSA/HSB/HSC  = PA8, PA9, PA10   (TIM1 CH1-3, high-side PWM)
+ *   M1LSA/LSB/LSC  = PB13, PB14, PB15 (TIM1 CH1N-3N, low-side PWM)
+ *   All six are pwm_only – use EN/DIS/SET commands.
+ *
+ * Motor 2 – TIM3 (general-purpose timer):
+ *   M2HSA/HSB/HSC  = PA6, PA7, PB0    (TIM3 CH1-3, high-side PWM)
+ *   M2LSA/LSB/LSC  = PA15, PB3, PB5   (GPIO output, low-side enables)
+ *
+ * Motor 3 – TIM4 (general-purpose timer):
+ *   M3HSA/HSB/HSC  = PB6, PB7, PB8    (TIM4 CH1-3, high-side PWM)
+ *   M3LSA/LSB/LSC  = PB9, PC13, PC14  (GPIO output, low-side enables)
+ *
+ * Spare GPIO outputs (configured in IOC, no assigned function yet):
+ *   SPARE_PB1  = PB1
+ *   SPARE_PB4  = PB4
+ *   SPARE_PC15 = PC15
+ *
+ * SETPIN is blocked on pwm_only pins.  Use EN/DIS/SET for those.
  * -------------------------------------------------------------------------
  */
 typedef struct {
@@ -64,41 +77,45 @@ typedef struct {
 
 static const PinEntry_t pin_table[] = {
     /* Hall inputs – Motor 1 */
-    { "M1HA",  GPIOA, GPIO_PIN_0,  0, 0 },
-    { "M1HB",  GPIOA, GPIO_PIN_1,  0, 0 },
-    { "M1HC",  GPIOA, GPIO_PIN_2,  0, 0 },
+    { "M1HA",      GPIOA, GPIO_PIN_0,  0, 0 },
+    { "M1HB",      GPIOA, GPIO_PIN_1,  0, 0 },
+    { "M1HC",      GPIOA, GPIO_PIN_2,  0, 0 },
     /* Hall inputs – Motor 2 */
-    { "M2HA",  GPIOA, GPIO_PIN_3,  0, 0 },
-    { "M2HB",  GPIOA, GPIO_PIN_4,  0, 0 },
-    { "M2HC",  GPIOA, GPIO_PIN_5,  0, 0 },
+    { "M2HA",      GPIOA, GPIO_PIN_3,  0, 0 },
+    { "M2HB",      GPIOA, GPIO_PIN_4,  0, 0 },
+    { "M2HC",      GPIOA, GPIO_PIN_5,  0, 0 },
     /* Hall inputs – Motor 3 */
-    { "M3HA",  GPIOB, GPIO_PIN_10, 0, 0 },
-    { "M3HB",  GPIOB, GPIO_PIN_11, 0, 0 },
-    { "M3HC",  GPIOB, GPIO_PIN_12, 0, 0 },
+    { "M3HA",      GPIOB, GPIO_PIN_10, 0, 0 },
+    { "M3HB",      GPIOB, GPIO_PIN_11, 0, 0 },
+    { "M3HC",      GPIOB, GPIO_PIN_12, 0, 0 },
     /* M1 high-side PWM (TIM1 CH1-3) – read-only via READPIN */
-    { "M1HSA", GPIOA, GPIO_PIN_8,  1, 1 },
-    { "M1HSB", GPIOA, GPIO_PIN_9,  1, 1 },
-    { "M1HSC", GPIOA, GPIO_PIN_10, 1, 1 },
+    { "M1HSA",     GPIOA, GPIO_PIN_8,  1, 1 },
+    { "M1HSB",     GPIOA, GPIO_PIN_9,  1, 1 },
+    { "M1HSC",     GPIOA, GPIO_PIN_10, 1, 1 },
     /* M1 low-side PWM (TIM1 CH1N-3N) – read-only via READPIN */
-    { "M1LSA", GPIOB, GPIO_PIN_13, 1, 1 },
-    { "M1LSB", GPIOB, GPIO_PIN_14, 1, 1 },
-    { "M1LSC", GPIOB, GPIO_PIN_15, 1, 1 },
+    { "M1LSA",     GPIOB, GPIO_PIN_13, 1, 1 },
+    { "M1LSB",     GPIOB, GPIO_PIN_14, 1, 1 },
+    { "M1LSC",     GPIOB, GPIO_PIN_15, 1, 1 },
     /* M2 high-side PWM (TIM3 CH1-3) – read-only via READPIN */
-    { "M2HSA", GPIOA, GPIO_PIN_6,  1, 1 },
-    { "M2HSB", GPIOA, GPIO_PIN_7,  1, 1 },
-    { "M2HSC", GPIOB, GPIO_PIN_0,  1, 1 },
+    { "M2HSA",     GPIOA, GPIO_PIN_6,  1, 1 },
+    { "M2HSB",     GPIOA, GPIO_PIN_7,  1, 1 },
+    { "M2HSC",     GPIOB, GPIO_PIN_0,  1, 1 },
     /* M2 low-side enables (GPIO output) – freely settable */
-    { "M2LSA", GPIOA, GPIO_PIN_15, 1, 0 },
-    { "M2LSB", GPIOB, GPIO_PIN_3,  1, 0 },
-    { "M2LSC", GPIOB, GPIO_PIN_5,  1, 0 },
+    { "M2LSA",     GPIOA, GPIO_PIN_15, 1, 0 },
+    { "M2LSB",     GPIOB, GPIO_PIN_3,  1, 0 },
+    { "M2LSC",     GPIOB, GPIO_PIN_5,  1, 0 },
     /* M3 high-side PWM (TIM4 CH1-3) – read-only via READPIN */
-    { "M3HSA", GPIOB, GPIO_PIN_6,  1, 1 },
-    { "M3HSB", GPIOB, GPIO_PIN_7,  1, 1 },
-    { "M3HSC", GPIOB, GPIO_PIN_8,  1, 1 },
+    { "M3HSA",     GPIOB, GPIO_PIN_6,  1, 1 },
+    { "M3HSB",     GPIOB, GPIO_PIN_7,  1, 1 },
+    { "M3HSC",     GPIOB, GPIO_PIN_8,  1, 1 },
     /* M3 low-side enables (GPIO output) – freely settable */
-    { "M3LSA", GPIOB, GPIO_PIN_9,  1, 0 },
-    { "M3LSB", GPIOC, GPIO_PIN_13, 1, 0 },
-    { "M3LSC", GPIOC, GPIO_PIN_14, 1, 0 },
+    { "M3LSA",     GPIOB, GPIO_PIN_9,  1, 0 },
+    { "M3LSB",     GPIOC, GPIO_PIN_13, 1, 0 },
+    { "M3LSC",     GPIOC, GPIO_PIN_14, 1, 0 },
+    /* Spare GPIO outputs (in IOC, no assigned function yet) */
+    { "SPARE_PB1",  GPIOB, GPIO_PIN_1,  1, 0 },
+    { "SPARE_PB4",  GPIOB, GPIO_PIN_4,  1, 0 },
+    { "SPARE_PC15", GPIOC, GPIO_PIN_15, 1, 0 },
 };
 
 #define PIN_TABLE_SIZE (sizeof(pin_table) / sizeof(pin_table[0]))
@@ -388,6 +405,7 @@ static void dispatch(char *line)
         USBCMD_Send("INFO              M2HSA/HSB/HSC  (PWM, read-only)\r\n");
         USBCMD_Send("INFO              M2LSA/LSB/LSC  M3HSA/HSB/HSC (PWM, read-only)\r\n");
         USBCMD_Send("INFO              M3LSA/LSB/LSC  (settable output)\r\n");
+        USBCMD_Send("INFO              SPARE_PB1  SPARE_PB4  SPARE_PC15  (settable output)\r\n");
         USBCMD_Send("INFO   HELP\r\n");
 
     /* ------------------------------------------------------------------ */
