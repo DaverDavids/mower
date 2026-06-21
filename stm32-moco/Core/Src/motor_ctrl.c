@@ -166,12 +166,13 @@ void Motor_Init(void)
 {
     /* Initialise state structs and ensure all outputs default LOW */
     for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
-        g_motor[m].enabled    = 0;
-        g_motor[m].dir        = DIR_FORWARD;
-        g_motor[m].duty       = 0;
-        g_motor[m].hall_state = 0;
+        g_motor[m].enabled     = 0;
+        g_motor[m].was_enabled = 0;
+        g_motor[m].dir         = DIR_FORWARD;
+        g_motor[m].duty        = 0;
+        g_motor[m].hall_state  = 0;
         g_motor[m].commut_step = 0;
-        g_motor[m].hall_ticks = 0;
+        g_motor[m].hall_ticks  = 0;
         /* Default phase map: logical 0→0, 1→1, 2→2 (identity) */
         g_motor[m].phase_map[0] = 0;
         g_motor[m].phase_map[1] = 1;
@@ -208,8 +209,9 @@ void Motor_Init(void)
 void Motor_SafeAll(void)
 {
     for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
-        g_motor[m].enabled = 0;
-        g_motor[m].duty    = 0;
+        g_motor[m].enabled     = 0;
+        g_motor[m].was_enabled = 0;
+        g_motor[m].duty        = 0;
         all_off(m);
     }
 }
@@ -239,8 +241,9 @@ void Motor_Enable(uint8_t motor_id)
 void Motor_Disable(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return;
-    g_motor[motor_id].enabled = 0;
-    g_motor[motor_id].duty    = 0;
+    g_motor[motor_id].enabled     = 0;
+    g_motor[motor_id].was_enabled = 0;
+    g_motor[motor_id].duty        = 0;
     all_off(motor_id);
 }
 
@@ -279,7 +282,9 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 /* -------------------------------------------------------------------------
  * 6-step commutation for one motor.
  * Call this frequently (main loop or timer interrupt).
- * When disabled, drives all outputs to zero.
+ * When disabled, drives all outputs to zero on the falling edge only –
+ * subsequent loop iterations are a no-op so manual SETPIN commands
+ * are not clobbered while the motor stays disabled.
  * -------------------------------------------------------------------------
  */
 void Motor_Commutate(uint8_t mid)
@@ -298,9 +303,16 @@ void Motor_Commutate(uint8_t mid)
     }
 
     if (!ms->enabled || ms->duty == 0) {
-        all_off(mid);
+        /* Only call all_off() on the falling edge (enabled → disabled).
+         * While already disabled, do nothing – avoids clobbering SETPIN. */
+        if (ms->was_enabled) {
+            all_off(mid);
+            ms->was_enabled = 0;
+        }
         return;
     }
+
+    ms->was_enabled = 1;
 
     /* Pick commutation table based on direction */
     const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
@@ -309,6 +321,7 @@ void Motor_Commutate(uint8_t mid)
     if (step.high == 0xFF) {
         /* Invalid Hall state – stop safely */
         all_off(mid);
+        ms->was_enabled = 0;
         return;
     }
 

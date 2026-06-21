@@ -40,6 +40,7 @@ typedef enum {
 /* Per-motor runtime state */
 typedef struct {
     uint8_t   enabled;          /* 0 = stopped, 1 = running              */
+    uint8_t   was_enabled;      /* tracks falling edge for all_off()     */
     MotorDir_t dir;             /* Rotation direction                    */
     uint16_t  duty;             /* 0 – PWM_PERIOD                        */
     uint8_t   hall_state;       /* Last raw 3-bit Hall reading (0-7)     */
