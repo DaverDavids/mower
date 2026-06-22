@@ -554,26 +554,13 @@ def main():
 
     app = MocoApp(moco_ser)
 
-    if "--raw" in sys.argv:
-        print("Entering RAW command mode. Type commands, Ctrl‑C to exit.")
-        try:
-            while True:
-                cmd = input("> ").strip()
-                if not cmd:
-                    continue
-                lines = moco_ser.send_and_wait(cmd)
-                for line in lines:
-                    print(line)
-        except KeyboardInterrupt:
-            print("\nExiting RAW mode.")
-    else:
-        try:
-            curses.wrapper(app.run)
-        except KeyboardInterrupt:
-            pass
-
-    moco_ser.close()
-    print("Disconnected.")
+    try:
+        curses.wrapper(app.run)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        moco_ser.close()
+        print("Disconnected.")
 
 
 if __name__ == "__main__":
