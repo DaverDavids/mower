@@ -120,6 +120,17 @@ static const PinEntry_t *find_pin(const char *name)
 }
 
 /* -------------------------------------------------------------------------
+ * Helper: get bit position from a GPIO_PIN_x mask
+ * -------------------------------------------------------------------------
+ */
+static uint8_t pin_bit(uint16_t pin_mask)
+{
+    uint8_t bit = 0;
+    while (bit < 16 && !((pin_mask >> bit) & 1U)) bit++;
+    return bit;
+}
+
+/* -------------------------------------------------------------------------
  * ISR callback – called from usbd_cdc_if.c CDC_Receive_FS()
  * Just push bytes into the ring buffer; do NOT parse here.
  * -------------------------------------------------------------------------
@@ -175,7 +186,7 @@ static void dispatch(char *line)
         if (!s_mid || !s_duty) {
             USBCMD_Send("ERR USAGE: SET <motor 1-3> <duty 0-1440>\r\n"); return;
         }
-        int mid  = atoi(s_mid)  - 1;   /* user 1-based → 0-based */
+        int mid  = atoi(s_mid)  - 1;   /* user 1-based -> 0-based */
         int duty = atoi(s_duty);
         if (mid < 0 || mid >= MOTOR_COUNT || duty < 0 || duty > (int)DUTY_MAX) {
             USBCMD_Send("ERR INVALID_ARG\r\n"); return;
@@ -330,7 +341,7 @@ static void dispatch(char *line)
         }
         if (p->pwm_only) {
             snprintf(tx_scratch, sizeof(tx_scratch),
-                "ERR PIN_IS_PWM: %s – use EN/DIS/SET commands\r\n", s_name);
+                "ERR PIN_IS_PWM: %s - use EN/DIS/SET commands\r\n", s_name);
             USBCMD_Send(tx_scratch); return;
         }
         HAL_GPIO_WritePin(p->port, p->pin,
@@ -368,6 +379,282 @@ static void dispatch(char *line)
             USBCMD_Send(tx_scratch);
         }
 
+    /* ================================================================== */
+    /* DEBUG COMMANDS                                                       */
+    /* ================================================================== */
+
+    /*
+     * ODRDUMP
+     * Read ODR (Output Data Register) directly for GPIOA and GPIOB.
+     * ODR holds what we WROTE; IDR holds what the pin MEASURES.
+     * If ODR bit is 1 but IDR bit is 0 -> pin is physically held low
+     * despite the write succeeding (external load, AF conflict, etc).
+     * If ODR bit is 0 -> the write never happened or was overwritten.
+     */
+    } else if (strcmp(tok, "ODRDUMP") == 0) {
+        uint32_t odr_a = GPIOA->ODR;
+        uint32_t idr_a = GPIOA->IDR;
+        uint32_t odr_b = GPIOB->ODR;
+        uint32_t idr_b = GPIOB->IDR;
+        USBCMD_Send("INFO --- ODR vs IDR (write vs actual voltage) ---\r\n");
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO GPIOA ODR=0x%04lX  IDR=0x%04lX  DIFF=0x%04lX\r\n",
+            odr_a, idr_a, odr_a ^ idr_a);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO GPIOB ODR=0x%04lX  IDR=0x%04lX  DIFF=0x%04lX\r\n",
+            odr_b, idr_b, odr_b ^ idr_b);
+        USBCMD_Send(tx_scratch);
+        /* Decode which LS pins have ODR=1 but IDR=0 (driven but read low) */
+        USBCMD_Send("INFO Pins with ODR=1 but IDR=0 (write stuck low):\r\n");
+        uint8_t found = 0;
+        for (uint32_t i = 0; i < PIN_TABLE_SIZE; i++) {
+            const PinEntry_t *p = &pin_table[i];
+            if (!p->output || p->pwm_only) continue;
+            uint32_t odr = (p->port == GPIOA) ? odr_a : odr_b;
+            uint32_t idr = (p->port == GPIOA) ? idr_a : idr_b;
+            uint8_t  bit = pin_bit(p->pin);
+            uint8_t  odr_bit = (odr >> bit) & 1U;
+            uint8_t  idr_bit = (idr >> bit) & 1U;
+            if (odr_bit && !idr_bit) {
+                snprintf(tx_scratch, sizeof(tx_scratch),
+                    "INFO   %s (bit %u): ODR=1 IDR=0 <- STUCK LOW\r\n", p->name, bit);
+                USBCMD_Send(tx_scratch);
+                found = 1;
+            }
+        }
+        if (!found) USBCMD_Send("INFO   (none)\r\n");
+
+    /*
+     * REGS <PA|PB>
+     * Dump the full GPIO register block for port A or B.
+     * Shows CRL, CRH (pin mode/config), ODR, IDR, LCKR.
+     * CRL covers pins 0-7, CRH covers pins 8-15.
+     * Each pin gets 4 bits: CNF[1:0] MODE[1:0]
+     *   MODE=00 input; MODE=01/10/11 output (10MHz/2MHz/50MHz)
+     *   CNF (input):  00=analog, 01=float, 10/11=pull
+     *   CNF (output): 00=PP, 01=OD, 10=AF-PP, 11=AF-OD
+     * Expected for plain output: MODE=10 (2MHz) CNF=00 -> nibble=0x2
+     * If you see CNF=10 or 11 on an output pin -> AF is active (timer
+     * or JTAG has the pin), not plain GPIO.
+     */
+    } else if (strcmp(tok, "REGS") == 0) {
+        char *s_port = strtok(NULL, " \t");
+        GPIO_TypeDef *port = NULL;
+        const char   *pname = "";
+        if (s_port && strcmp(s_port, "PA") == 0) { port = GPIOA; pname = "GPIOA"; }
+        else if (s_port && strcmp(s_port, "PB") == 0) { port = GPIOB; pname = "GPIOB"; }
+        else { USBCMD_Send("ERR USAGE: REGS <PA|PB>\r\n"); return; }
+
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO --- %s Registers ---\r\n", pname);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO CRL =0x%08lX  (pins 0-7  mode/cfg)\r\n", port->CRL);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO CRH =0x%08lX  (pins 8-15 mode/cfg)\r\n", port->CRH);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO IDR =0x%04lX        (actual pin voltage)\r\n", port->IDR);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO ODR =0x%04lX        (what we wrote)\r\n", port->ODR);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO LCKR=0x%08lX  (lock status)\r\n", port->LCKR);
+        USBCMD_Send(tx_scratch);
+
+        /* Decode each pin's nibble from CRL/CRH */
+        USBCMD_Send("INFO Pin-by-pin mode decode:\r\n");
+        for (uint8_t bit = 0; bit < 16; bit++) {
+            uint32_t cr   = (bit < 8) ? port->CRL : port->CRH;
+            uint8_t  shift = (bit % 8) * 4;
+            uint8_t  nibble = (cr >> shift) & 0xFU;
+            uint8_t  mode = nibble & 0x3U;
+            uint8_t  cnf  = (nibble >> 2) & 0x3U;
+            const char *mode_str = (mode == 0) ? "IN" :
+                                   (mode == 1) ? "OUT_10MHz" :
+                                   (mode == 2) ? "OUT_2MHz"  : "OUT_50MHz";
+            const char *cnf_str;
+            if (mode == 0) {
+                cnf_str = (cnf == 0) ? "analog" :
+                          (cnf == 1) ? "float"  :
+                          (cnf == 2) ? "pull"   : "pull(rsv)";
+            } else {
+                cnf_str = (cnf == 0) ? "PP"    :
+                          (cnf == 1) ? "OD"    :
+                          (cnf == 2) ? "AF-PP" : "AF-OD";
+            }
+            uint8_t idr_bit = (port->IDR >> bit) & 1U;
+            uint8_t odr_bit = (port->ODR >> bit) & 1U;
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "INFO   P%s%02u nibble=0x%X mode=%-9s cnf=%-8s ODR=%u IDR=%u\r\n",
+                pname + 4, bit, nibble, mode_str, cnf_str, odr_bit, idr_bit);
+            USBCMD_Send(tx_scratch);
+        }
+
+    /*
+     * CRLCONF <PA|PB> <bit 0-15>
+     * Read the 4-bit CRL/CRH nibble for a single pin and decode it.
+     * Quick check: is a specific pin configured as AF instead of GPIO output?
+     */
+    } else if (strcmp(tok, "CRLCONF") == 0) {
+        char *s_port = strtok(NULL, " \t");
+        char *s_bit  = strtok(NULL, " \t");
+        if (!s_port || !s_bit) {
+            USBCMD_Send("ERR USAGE: CRLCONF <PA|PB> <bit 0-15>\r\n"); return;
+        }
+        GPIO_TypeDef *port = NULL;
+        const char   *pname = "";
+        if      (strcmp(s_port, "PA") == 0) { port = GPIOA; pname = "PA"; }
+        else if (strcmp(s_port, "PB") == 0) { port = GPIOB; pname = "PB"; }
+        else { USBCMD_Send("ERR USAGE: REGS <PA|PB>\r\n"); return; }
+        int bit = atoi(s_bit);
+        if (bit < 0 || bit > 15) { USBCMD_Send("ERR bit must be 0-15\r\n"); return; }
+        uint32_t cr    = (bit < 8) ? port->CRL : port->CRH;
+        uint8_t  shift = (uint8_t)((bit % 8) * 4);
+        uint8_t  nibble = (cr >> shift) & 0xFU;
+        uint8_t  mode   = nibble & 0x3U;
+        uint8_t  cnf    = (nibble >> 2) & 0x3U;
+        const char *mode_str = (mode == 0) ? "INPUT" :
+                               (mode == 1) ? "OUT_10MHz" :
+                               (mode == 2) ? "OUT_2MHz"  : "OUT_50MHz";
+        const char *cnf_str;
+        if (mode == 0) {
+            cnf_str = (cnf == 0) ? "analog" :
+                      (cnf == 1) ? "floating" :
+                      (cnf == 2) ? "pull-up/dn" : "pull(rsv)";
+        } else {
+            cnf_str = (cnf == 0) ? "push-pull (GPIO)" :
+                      (cnf == 1) ? "open-drain (GPIO)" :
+                      (cnf == 2) ? "AF push-pull" : "AF open-drain";
+        }
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO %s%d nibble=0x%X mode=%s cnf=%s ODR=%u IDR=%u\r\n",
+            pname, bit, nibble, mode_str, cnf_str,
+            (unsigned)((port->ODR >> bit) & 1U),
+            (unsigned)((port->IDR >> bit) & 1U));
+        USBCMD_Send(tx_scratch);
+
+    /*
+     * SETBSRR <PA|PB> <bit 0-15> <0|1>
+     * Write directly to the BSRR (Bit Set/Reset Register) bypassing HAL.
+     * BSRR is the atomic hardware mechanism – writing here is the lowest
+     * level write possible without a debugger.
+     * If ODR changes but IDR still reads 0 -> the pin is loaded externally.
+     * If ODR does NOT change -> the pin is AF-controlled (timer/JTAG owns it).
+     */
+    } else if (strcmp(tok, "SETBSRR") == 0) {
+        char *s_port = strtok(NULL, " \t");
+        char *s_bit  = strtok(NULL, " \t");
+        char *s_val  = strtok(NULL, " \t");
+        if (!s_port || !s_bit || !s_val) {
+            USBCMD_Send("ERR USAGE: SETBSRR <PA|PB> <bit 0-15> <0|1>\r\n"); return;
+        }
+        GPIO_TypeDef *port = NULL;
+        const char   *pname = "";
+        if      (strcmp(s_port, "PA") == 0) { port = GPIOA; pname = "PA"; }
+        else if (strcmp(s_port, "PB") == 0) { port = GPIOB; pname = "PB"; }
+        else { USBCMD_Send("ERR port must be PA or PB\r\n"); return; }
+        int bit = atoi(s_bit);
+        int val = atoi(s_val);
+        if (bit < 0 || bit > 15) { USBCMD_Send("ERR bit must be 0-15\r\n"); return; }
+        if (val != 0 && val != 1) { USBCMD_Send("ERR val must be 0 or 1\r\n"); return; }
+        if (val == 1) {
+            port->BSRR = (1U << bit);           /* set */
+        } else {
+            port->BSRR = (1U << (bit + 16));    /* reset */
+        }
+        /* Read back immediately */
+        uint8_t odr_bit = (port->ODR >> bit) & 1U;
+        uint8_t idr_bit = (port->IDR >> bit) & 1U;
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "OK BSRR %s%d=%d -> ODR=%u IDR=%u%s\r\n",
+            pname, bit, val, odr_bit, idr_bit,
+            (odr_bit != idr_bit) ? "  ** ODR!=IDR: pin loaded or AF conflict **" : "");
+        USBCMD_Send(tx_scratch);
+
+    /*
+     * SETPINRAW <name> <0|1>
+     * Like SETPIN but reads back ODR and IDR immediately and reports both.
+     * Tells you in one command: did the write land in ODR, and does IDR agree?
+     */
+    } else if (strcmp(tok, "SETPINRAW") == 0) {
+        char *s_name = strtok(NULL, " \t");
+        char *s_val  = strtok(NULL, " \t");
+        if (!s_name || !s_val) {
+            USBCMD_Send("ERR USAGE: SETPINRAW <name> <0|1>\r\n"); return;
+        }
+        int val = atoi(s_val);
+        if (val != 0 && val != 1) { USBCMD_Send("ERR val must be 0 or 1\r\n"); return; }
+        const PinEntry_t *p = find_pin(s_name);
+        if (!p) {
+            snprintf(tx_scratch, sizeof(tx_scratch), "ERR UNKNOWN_PIN: %s\r\n", s_name);
+            USBCMD_Send(tx_scratch); return;
+        }
+        uint8_t bit = pin_bit(p->pin);
+        /* Write via BSRR (atomic, bypasses HAL) */
+        if (val == 1) {
+            p->port->BSRR = (1U << bit);
+        } else {
+            p->port->BSRR = (1U << (bit + 16));
+        }
+        uint8_t odr_bit = (p->port->ODR >> bit) & 1U;
+        uint8_t idr_bit = (p->port->IDR >> bit) & 1U;
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "OK %s bit=%u wrote=%d ODR=%u IDR=%u%s\r\n",
+            s_name, bit, val, odr_bit, idr_bit,
+            (odr_bit != idr_bit) ? "  ** MISMATCH **" : "  OK");
+        USBCMD_Send(tx_scratch);
+
+    /*
+     * AFIO
+     * Dump the AFIO (Alternate Function I/O) remapping registers.
+     * MAPR bits tell us if JTAG pins (PA15/PB3/PB4) have been released
+     * to GPIO, and which timers have been remapped.
+     * SWJ_CFG field (bits [26:24]):
+     *   000 = full JTAG+SWD (PA15/PB3/PB4 locked to JTAG)
+     *   010 = JTAG disabled, SWD only (PA15/PB3/PB4 free as GPIO) <- want this
+     *   100 = all disabled (PA13/PA14 also released)
+     */
+    } else if (strcmp(tok, "AFIO") == 0) {
+        uint32_t mapr  = AFIO->MAPR;
+        uint32_t mapr2 = AFIO->MAPR2;
+        uint8_t  swj   = (mapr >> 24) & 0x7U;
+        const char *swj_str =
+            (swj == 0) ? "FULL_JTAG (PA15/PB3/PB4 locked!)" :
+            (swj == 1) ? "JTAG_NO_NJTRST" :
+            (swj == 2) ? "SWD_ONLY (PA15/PB3/PB4 free)" :
+            (swj == 4) ? "ALL_DISABLED" : "reserved";
+        USBCMD_Send("INFO --- AFIO Remap Registers ---\r\n");
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO MAPR =0x%08lX\r\n", mapr);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO MAPR2=0x%08lX\r\n", mapr2);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO SWJ_CFG [26:24]=%u -> %s\r\n", swj, swj_str);
+        USBCMD_Send(tx_scratch);
+        /* Decode timer remaps that affect our pins */
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO TIM1_REMAP [7:6]=%lu  (0=no remap; 3=full remap)\r\n",
+            (mapr >> 6) & 0x3U);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO TIM2_REMAP [9:8]=%lu  (0=no remap)\r\n",
+            (mapr >> 8) & 0x3U);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO TIM3_REMAP [11:10]=%lu  (0=no; 2=partial PB4->PB0; 3=full)\r\n",
+            (mapr >> 10) & 0x3U);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO TIM4_REMAP [12]=%lu  (0=no remap)\r\n",
+            (mapr >> 12) & 0x1U);
+        USBCMD_Send(tx_scratch);
+
     /* ------------------------------------------------------------------ */
     } else if (strcmp(tok, "HELP") == 0) {
         USBCMD_Send("INFO Commands:\r\n");
@@ -385,7 +672,14 @@ static void dispatch(char *line)
         USBCMD_Send("INFO   GETMAP <motor 1-3>\r\n");
         USBCMD_Send("INFO   SETPIN <name> <0|1>  (GPIO output only, not PWM pins)\r\n");
         USBCMD_Send("INFO   READPIN <name>\r\n");
-        USBCMD_Send("INFO   PINS  (dump all pin states)\r\n");
+        USBCMD_Send("INFO   PINS  (dump all pin states via IDR)\r\n");
+        USBCMD_Send("INFO --- Debug commands ---\r\n");
+        USBCMD_Send("INFO   ODRDUMP          ODR vs IDR for GPIOA+B; flags mismatches\r\n");
+        USBCMD_Send("INFO   REGS <PA|PB>     Full register dump + per-pin mode decode\r\n");
+        USBCMD_Send("INFO   CRLCONF <PA|PB> <bit>   Decode one pin's CRL/CRH nibble\r\n");
+        USBCMD_Send("INFO   SETBSRR <PA|PB> <bit> <0|1>  Raw BSRR write + readback\r\n");
+        USBCMD_Send("INFO   SETPINRAW <name> <0|1>  BSRR write by name + ODR/IDR readback\r\n");
+        USBCMD_Send("INFO   AFIO             Dump AFIO remap regs (JTAG/SWD/timer remap)\r\n");
         USBCMD_Send("INFO   Pin names: M1HA/HB/HC  M2HA/HB/HC  M3HA/HB/HC\r\n");
         USBCMD_Send("INFO              M1HSA/B/C  M1LSA/B/C  (PWM, read-only)\r\n");
         USBCMD_Send("INFO              M2HSA/B/C  (PWM read-only)  M2LSA/B/C (settable)\r\n");
