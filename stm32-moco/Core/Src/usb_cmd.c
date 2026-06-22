@@ -63,9 +63,26 @@ static uint8_t  tui_needs_full_redraw = 1;
 static uint32_t tui_last_refresh_ms = 0;
 #define TUI_REFRESH_MS  100U
 
+/* Rate-limit for arrow-key duty changes: minimum ms between increments */
+#define DUTY_KEY_RATE_MS  80U
+static uint32_t tui_last_duty_key_ms = 0;
+
 /* Escape-sequence parser for arrow / function keys */
 typedef enum { ESC_IDLE, ESC_GOT_ESC, ESC_GOT_BRACKET } EscState_t;
 static EscState_t esc_state = ESC_IDLE;
+
+/* -------------------------------------------------------------------------
+ * RX flush helper - discard all pending bytes in the ring buffer.
+ * Call before acting on any safety-critical key (E, D, S, Q) so that
+ * a backlog of queued arrow-key repeats cannot execute after the user
+ * has already pressed a stop/disable key.
+ * -------------------------------------------------------------------------
+ */
+static void rx_flush(void)
+{
+    rx_tail = rx_head;
+    esc_state = ESC_IDLE;
+}
 
 /* -------------------------------------------------------------------------
  * Pin table
@@ -444,18 +461,22 @@ static void tui_handle_key(uint8_t key)
         tui_needs_full_redraw = 1;
         break;
 
-    /* Enable / Disable */
+    /* Enable / Disable - flush RX first so queued arrow repeats don't
+       execute after the user has already pressed a safety key */
     case 'e': case 'E':
+        rx_flush();
         Motor_Enable(m);
         tui_set_status("Motor enabled.");
         break;
     case 'd': case 'D':
+        rx_flush();
         Motor_Disable(m);
         tui_set_status("Motor disabled.");
         break;
 
-    /* Stop all */
+    /* Stop all - flush too */
     case 's': case 'S':
+        rx_flush();
         Motor_SafeAll();
         tui_set_status("ALL STOPPED.");
         break;
@@ -470,15 +491,29 @@ static void tui_handle_key(uint8_t key)
         tui_set_status("Direction: REVERSE.");
         break;
 
-    /* Duty: up arrow = 0x41 after ESC[ parsed, but we handle via esc_state below */
-    /* Direct +10 / -10 fallback with + / - keys */
+    /* Duty: direct +10 / -10 with + / - keys (also rate-limited) */
     case '+':
-    { uint16_t d = ms->duty + 10; if (d > DUTY_MAX) d = DUTY_MAX;
-      Motor_SetDuty(m, d); tui_set_status("Duty +10."); break; }
+    {
+        uint32_t now = HAL_GetTick();
+        if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
+            tui_last_duty_key_ms = now;
+            uint16_t d = ms->duty + 10; if (d > DUTY_MAX) d = DUTY_MAX;
+            Motor_SetDuty(m, d); tui_set_status("Duty +10.");
+        }
+        break;
+    }
     case '-':
-    { uint16_t d = (ms->duty >= 10) ? ms->duty - 10 : 0;
-      Motor_SetDuty(m, d); tui_set_status("Duty -10."); break; }
+    {
+        uint32_t now = HAL_GetTick();
+        if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
+            tui_last_duty_key_ms = now;
+            uint16_t d = (ms->duty >= 10) ? ms->duty - 10 : 0;
+            Motor_SetDuty(m, d); tui_set_status("Duty -10.");
+        }
+        break;
+    }
     case '0':
+        rx_flush();
         Motor_SetDuty(m, 0);
         tui_set_status("Duty zeroed.");
         break;
@@ -527,6 +562,7 @@ static void tui_handle_key(uint8_t key)
 
     /* Quit TUI -> CMD mode */
     case 'q': case 'Q':
+        rx_flush();
         g_mode = MODE_CMD;
         tui_full_clear();
         USBCMD_Send("INFO Entered CMD mode. Type TUI to return.\r\n");
@@ -536,24 +572,44 @@ static void tui_handle_key(uint8_t key)
     }
 }
 
-/* Handle arrow / page keys decoded from ESC sequences */
+/* Handle arrow / page keys decoded from ESC sequences.
+ * Arrow keys are rate-limited to DUTY_KEY_RATE_MS to prevent the key-repeat
+ * buffer from driving duty up faster than the user intends. */
 static void tui_handle_escape_final(uint8_t final_byte)
 {
     uint8_t m = tui_selected_motor;
     MotorState_t *ms = &g_motor[m];
+    uint32_t now = HAL_GetTick();
+
     switch (final_byte) {
     case 'A': /* up arrow -> duty +10 */
-    { uint16_t d = ms->duty + 10; if (d > DUTY_MAX) d = DUTY_MAX;
-      Motor_SetDuty(m, d); tui_set_status("Duty +10."); break; }
+        if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
+            tui_last_duty_key_ms = now;
+            uint16_t d = ms->duty + 10; if (d > DUTY_MAX) d = DUTY_MAX;
+            Motor_SetDuty(m, d); tui_set_status("Duty +10.");
+        }
+        break;
     case 'B': /* down arrow -> duty -10 */
-    { uint16_t d = (ms->duty >= 10) ? ms->duty - 10 : 0;
-      Motor_SetDuty(m, d); tui_set_status("Duty -10."); break; }
+        if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
+            tui_last_duty_key_ms = now;
+            uint16_t d = (ms->duty >= 10) ? ms->duty - 10 : 0;
+            Motor_SetDuty(m, d); tui_set_status("Duty -10.");
+        }
+        break;
     case '5': /* PgUp -> duty +100 */
-    { uint16_t d = ms->duty + 100; if (d > DUTY_MAX) d = DUTY_MAX;
-      Motor_SetDuty(m, d); tui_set_status("Duty +100."); break; }
+        if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
+            tui_last_duty_key_ms = now;
+            uint16_t d = ms->duty + 100; if (d > DUTY_MAX) d = DUTY_MAX;
+            Motor_SetDuty(m, d); tui_set_status("Duty +100.");
+        }
+        break;
     case '6': /* PgDn -> duty -100 */
-    { uint16_t d = (ms->duty >= 100) ? ms->duty - 100 : 0;
-      Motor_SetDuty(m, d); tui_set_status("Duty -100."); break; }
+        if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
+            tui_last_duty_key_ms = now;
+            uint16_t d = (ms->duty >= 100) ? ms->duty - 100 : 0;
+            Motor_SetDuty(m, d); tui_set_status("Duty -100.");
+        }
+        break;
     default: break;
     }
 }
@@ -564,19 +620,19 @@ static void tui_handle_escape_final(uint8_t final_byte)
  */
 static void TUI_Process(void)
 {
-    /* Drain RX bytes */
-    while (rx_tail != rx_head) {
+    /* Drain RX bytes - process ONE logical keypress per loop iteration so
+       that a buffered flood of arrow repeats cannot monopolise the CPU and
+       prevent the safety keys from being seen promptly. */
+    if (rx_tail != rx_head) {
         uint8_t c = rx_buf[rx_tail];
         rx_tail = (rx_tail + 1U) % RX_BUF_SIZE;
 
-        /* Escape sequence state machine */
         if (esc_state == ESC_IDLE) {
-            if (c == 0x1b) { esc_state = ESC_GOT_ESC; continue; }
-            tui_handle_key(c);
+            if (c == 0x1b) { esc_state = ESC_GOT_ESC; }
+            else { tui_handle_key(c); }
         } else if (esc_state == ESC_GOT_ESC) {
-            if (c == '[') { esc_state = ESC_GOT_BRACKET; continue; }
-            esc_state = ESC_IDLE;
-            tui_handle_key(c);
+            if (c == '[') { esc_state = ESC_GOT_BRACKET; }
+            else { esc_state = ESC_IDLE; tui_handle_key(c); }
         } else if (esc_state == ESC_GOT_BRACKET) {
             esc_state = ESC_IDLE;
             tui_handle_escape_final(c);
@@ -920,6 +976,7 @@ void USBCMD_Init(void)
     g_mode = MODE_TUI;
     tui_needs_full_redraw = 1;
     tui_last_refresh_ms = 0;
+    tui_last_duty_key_ms = 0;
     /* small delay to let USB host enumerate before we blast VT100 */
     HAL_Delay(500);
     tui_full_redraw();
