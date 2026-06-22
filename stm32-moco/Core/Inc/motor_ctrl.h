@@ -37,17 +37,27 @@ typedef enum {
     DIR_REVERSE  = 1
 } MotorDir_t;
 
+/* Hall sequence ring – captured in Motor_Commutate(), read by TUI.
+ * 64 entries per motor. Power-of-2 so wrap is a bitmask. */
+#define HALL_RING_LEN  64U
+#define HALL_RING_MASK (HALL_RING_LEN - 1U)
+
+typedef struct {
+    uint8_t  buf[HALL_RING_LEN];  /* circular buffer of hall values     */
+    uint32_t head;                /* next-write index (mod HALL_RING_LEN) */
+} HallRing_t;
+
 /* Per-motor runtime state */
 typedef struct {
-    uint8_t   enabled;          /* 0 = stopped, 1 = running              */
-    uint8_t   was_enabled;      /* tracks falling edge for all_off()     */
-    MotorDir_t dir;             /* Rotation direction                    */
-    uint16_t  duty;             /* 0 – PWM_PERIOD                        */
-    uint8_t   hall_state;       /* Last raw 3-bit Hall reading (0-7)     */
-    uint8_t   commut_step;      /* Active commutation step (0-5)         */
-    int32_t   hall_ticks;       /* Cumulative Hall transition counter    */
-    /* For pin-swap debug: logical→physical channel remap (0,1,2)        */
-    uint8_t   phase_map[3];     /* phase_map[logical] = physical_channel */
+    uint8_t    enabled;          /* 0 = stopped, 1 = running              */
+    uint8_t    was_enabled;      /* tracks falling edge for all_off()     */
+    MotorDir_t dir;              /* Rotation direction                    */
+    uint16_t   duty;             /* 0 – PWM_PERIOD                        */
+    uint8_t    hall_state;       /* Last raw 3-bit Hall reading (0-7)     */
+    uint8_t    commut_step;      /* Active commutation step (0-5)         */
+    int32_t    hall_ticks;       /* Cumulative Hall transition counter    */
+    uint8_t    phase_map[3];     /* phase_map[logical] = physical_channel */
+    HallRing_t hall_ring;        /* ISR-speed transition log              */
 } MotorState_t;
 
 /* Global state array – accessible from usb_cmd.c for debug reads */
@@ -71,6 +81,7 @@ void Motor_CommutateAll(void);
 uint8_t Motor_ReadHall(uint8_t motor_id);   /* Returns 3-bit Hall state  */
 int32_t Motor_GetTicks(uint8_t motor_id);   /* Signed tick count         */
 void    Motor_ResetTicks(uint8_t motor_id);
+void    Motor_ClearHallRing(uint8_t motor_id);
 
 /* ----- Phase-map swap (debug) ----------------------------------------- */
 void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2);

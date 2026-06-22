@@ -74,21 +74,14 @@ static const uint32_t TIM_CH[3] = {
  */
 typedef struct {
     TIM_HandleTypeDef *htim;
-    /* GPIO port/pin for low-side enables (index matches CH 0-2) */
     GPIO_TypeDef *ls_port[3];
     uint16_t      ls_pin[3];
-    /* Hall GPIO port/pin (index 0-2 → HA, HB, HC) */
     GPIO_TypeDef *hall_port[3];
     uint16_t      hall_pin[3];
-    /* Is this timer TIM1 (advanced, has complementary outputs)? */
     uint8_t       is_advanced;
 } MotorHW_t;
 
 static const MotorHW_t MOTOR_HW[MOTOR_COUNT] = {
-    /* Motor 1 – TIM1 (advanced), hardware dead-time, complementary outputs
-     * HS: A8(CH1), A9(CH2), A10(CH3)
-     * LS: B13(CH1N), B14(CH2N), B15(CH3N) – no separate GPIO needed
-     * Hall: A0, A1, A2 */
     {
         .htim       = &htim1,
         .ls_port    = {NULL, NULL, NULL},
@@ -97,10 +90,6 @@ static const MotorHW_t MOTOR_HW[MOTOR_COUNT] = {
         .hall_pin   = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2},
         .is_advanced = 1
     },
-    /* Motor 2 – TIM4, GPIO low-side enables
-     * HS: B6(CH1), B7(CH2), B8(CH3)
-     * LS enables: A15, B3, B5
-     * Hall: A3, A4, A5 */
     {
         .htim       = &htim4,
         .ls_port    = {GPIOA, GPIOB, GPIOB},
@@ -109,10 +98,6 @@ static const MotorHW_t MOTOR_HW[MOTOR_COUNT] = {
         .hall_pin   = {GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5},
         .is_advanced = 0
     },
-    /* Motor 3 – TIM3, GPIO low-side enables
-     * HS: B4(CH1), B0(CH3), B1(CH4)
-     * LS enables: B9, B11, B12
-     * Hall: A6, A7, B10 */
     {
         .htim       = &htim3,
         .ls_port    = {GPIOB, GPIOB, GPIOB},
@@ -133,8 +118,6 @@ MotorState_t g_motor[MOTOR_COUNT];
  * Internal helpers
  * -------------------------------------------------------------------------
  */
-
-/* De-assert all high-side PWM (pulse=0) and all low-side GPIOs */
 static void all_off(uint8_t mid)
 {
     const MotorHW_t *hw = &MOTOR_HW[mid];
@@ -145,7 +128,6 @@ static void all_off(uint8_t mid)
         }
     }
     if (hw->is_advanced) {
-        /* Disable MOE (main output enable) to force complementary outputs off */
         __HAL_TIM_MOE_DISABLE(hw->htim);
     }
 }
@@ -157,7 +139,6 @@ static void all_off(uint8_t mid)
 
 void Motor_Init(void)
 {
-    /* Initialise state structs and ensure all outputs default LOW */
     for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
         g_motor[m].enabled     = 0;
         g_motor[m].was_enabled = 0;
@@ -166,23 +147,19 @@ void Motor_Init(void)
         g_motor[m].hall_state  = 0;
         g_motor[m].commut_step = 0;
         g_motor[m].hall_ticks  = 0;
-        /* Default phase map: logical 0→0, 1→1, 2→2 (identity) */
         g_motor[m].phase_map[0] = 0;
         g_motor[m].phase_map[1] = 1;
         g_motor[m].phase_map[2] = 2;
+        memset(&g_motor[m].hall_ring, 0, sizeof(HallRing_t));
 
-        /* Start timers with pulse=0 (outputs low).  PWM channels
-         * are already configured by MX_TIMx_Init() with Pulse=0. */
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
 
         if (MOTOR_HW[m].is_advanced) {
-            /* Start complementary channels for TIM1 */
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
-            /* Enable dead-time on TIM1 */
             TIM_BreakDeadTimeConfigTypeDef bdtConfig = {0};
             bdtConfig.OffStateRunMode   = TIM_OSSR_DISABLE;
             bdtConfig.OffStateIDLEMode  = TIM_OSSI_DISABLE;
@@ -194,7 +171,6 @@ void Motor_Init(void)
             HAL_TIMEx_ConfigBreakDeadTime(MOTOR_HW[m].htim, &bdtConfig);
         }
 
-        /* Force all outputs to known-low state */
         all_off(m);
     }
 }
@@ -240,7 +216,6 @@ void Motor_Disable(uint8_t motor_id)
     all_off(motor_id);
 }
 
-/* Read 3-bit Hall state for a motor */
 uint8_t Motor_ReadHall(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return 0;
@@ -263,6 +238,12 @@ void Motor_ResetTicks(uint8_t motor_id)
     g_motor[motor_id].hall_ticks = 0;
 }
 
+void Motor_ClearHallRing(uint8_t motor_id)
+{
+    if (motor_id >= MOTOR_COUNT) return;
+    memset(&g_motor[motor_id].hall_ring, 0, sizeof(HallRing_t));
+}
+
 void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 {
     if (motor_id >= MOTOR_COUNT) return;
@@ -275,29 +256,33 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 /* -------------------------------------------------------------------------
  * 6-step commutation for one motor.
  * Call this frequently (main loop or timer interrupt).
- * When disabled, drives all outputs to zero on the falling edge only –
- * subsequent loop iterations are a no-op so manual SETPIN commands
- * are not clobbered while the motor stays disabled.
+ *
+ * Hall ring capture happens HERE – every genuine transition is recorded
+ * regardless of how fast the TUI redraws.  The ring holds 64 entries
+ * and wraps; the TUI display just reads the tail.
  * -------------------------------------------------------------------------
  */
 void Motor_Commutate(uint8_t mid)
 {
     if (mid >= MOTOR_COUNT) return;
 
-    MotorState_t *ms      = &g_motor[mid];
-    const MotorHW_t *hw   = &MOTOR_HW[mid];
+    MotorState_t    *ms = &g_motor[mid];
+    const MotorHW_t *hw = &MOTOR_HW[mid];
 
     uint8_t new_hall = Motor_ReadHall(mid);
 
-    /* Count Hall transitions for position/distance feedback */
-    if (new_hall != ms->hall_state && new_hall != 0 && new_hall != 7) {
+    /* Record every genuine Hall transition into the ring buffer.
+     * Valid states only (not 0 or 7). Consecutive duplicates are skipped
+     * so the ring shows the actual state sequence, not repeated samples. */
+    if (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U) {
+        HallRing_t *r = &ms->hall_ring;
+        r->buf[r->head & HALL_RING_MASK] = new_hall;
+        r->head++;
         ms->hall_ticks++;
         ms->hall_state = new_hall;
     }
 
     if (!ms->enabled || ms->duty == 0) {
-        /* Only call all_off() on the falling edge (enabled → disabled).
-         * While already disabled, do nothing – avoids clobbering SETPIN. */
         if (ms->was_enabled) {
             all_off(mid);
             ms->was_enabled = 0;
@@ -307,22 +292,18 @@ void Motor_Commutate(uint8_t mid)
 
     ms->was_enabled = 1;
 
-    /* Pick commutation table based on direction */
     const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
     CommutStep_t step = table[new_hall];
 
     if (step.high == 0xFF) {
-        /* Invalid Hall state – stop safely */
         all_off(mid);
         ms->was_enabled = 0;
         return;
     }
 
-    /* Apply phase map (logical → physical channel) */
     uint8_t phys_high = ms->phase_map[step.high];
     uint8_t phys_low  = ms->phase_map[step.low];
 
-    /* Zero all channels, then set active pair */
     for (uint8_t ch = 0; ch < 3; ch++) {
         __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[ch], 0);
         if (!hw->is_advanced && hw->ls_port[ch] != NULL) {
@@ -330,19 +311,13 @@ void Motor_Commutate(uint8_t mid)
         }
     }
 
-    /* Assert high-side PWM */
     __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], ms->duty);
 
-    /* Assert low-side */
-    if (hw->is_advanced) {
-        /* TIM1: complementary channel handles low-side automatically */
-        /* The CHxN output mirrors CHx through dead-time hardware.    */
-        /* Writing Pulse on CHx drives CHxN complement automatically. */
-    } else {
+    if (!hw->is_advanced) {
         HAL_GPIO_WritePin(hw->ls_port[phys_low], hw->ls_pin[phys_low], GPIO_PIN_SET);
     }
 
-    ms->commut_step = step.high; /* store for debug */
+    ms->commut_step = step.high;
 }
 
 void Motor_CommutateAll(void)

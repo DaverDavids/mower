@@ -71,11 +71,13 @@ static uint32_t tui_last_duty_key_ms = 0;
 typedef enum { ESC_IDLE, ESC_GOT_ESC, ESC_GOT_BRACKET } EscState_t;
 static EscState_t esc_state = ESC_IDLE;
 
+/* Snapshot of ring head last time TUI drew the hall seq row.
+ * Used to detect whether the ring has new data without re-rendering
+ * the whole panel. */
+static uint32_t tui_hall_ring_last[MOTOR_COUNT];
+
 /* -------------------------------------------------------------------------
  * RX flush helper - discard all pending bytes in the ring buffer.
- * Call before acting on any safety-critical key (E, D, S, Q) so that
- * a backlog of queued arrow-key repeats cannot execute after the user
- * has already pressed a stop/disable key.
  * -------------------------------------------------------------------------
  */
 static void rx_flush(void)
@@ -166,7 +168,6 @@ void USBCMD_Send(const char *msg)
     }
 }
 
-/* raw byte send for TUI escape sequences */
 static void send_raw(const char *s) { USBCMD_Send(s); }
 
 /* =========================================================================
@@ -183,7 +184,7 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
  *  Row 6    Direction + key
  *  Row 7    Duty bar + up/down keys
  *  Row 8    Hall state (live)
- *  Row 9    Hall monitor (sequence log)
+ *  Row 9    Hall sequence log  (captured at commutation speed)
  *  Row 10   Ticks
  *  Row 11   Phase map + swap keys
  *  Row 12   -------------------------------------------------------
@@ -212,11 +213,8 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
 #define TUI_ROW_HELP2   17
 #define TUI_ROW_STATUS  18
 
-/* hall monitor ring for selected motor */
-#define HALLMON_LEN 12
-static uint8_t hallmon_buf[MOTOR_COUNT][HALLMON_LEN];
-static uint8_t hallmon_pos[MOTOR_COUNT];
-static uint8_t hallmon_prev[MOTOR_COUNT];
+/* How many ring entries to show in the TUI hall-seq row */
+#define TUI_HALLSEQ_SHOW  20U
 
 static void tui_goto(uint8_t row, uint8_t col)
 {
@@ -298,39 +296,40 @@ static void tui_draw_motor_panel(void)
         ms->duty, DUTY_MAX);
     send_raw(tx_scratch);
 
-    /* Hall */
+    /* Hall – live current state */
     tui_goto(TUI_ROW_HALL, 1); tui_erase_line();
     uint8_t h = Motor_ReadHall(m);
-    /* push to hall monitor ring if changed */
-    if (h != hallmon_prev[m]) {
-        hallmon_buf[m][hallmon_pos[m] % HALLMON_LEN] = h;
-        hallmon_pos[m]++;
-        hallmon_prev[m] = h;
-    }
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " Hall:   \x1b[1;36m0x%X\x1b[0m  HA=%u HB=%u HC=%u  %s",
+        " Hall:   \x1b[1;36m0x%X\x1b[0m  HA=%u HB=%u HC=%u  ticks=\x1b[36m%ld\x1b[0m  %s",
         h, (h>>2)&1, (h>>1)&1, h&1,
-        (h == 0 || h == 7) ? "\x1b[1;31m[FAULT - sensor dead?]\x1b[0m" : "");
+        (long)ms->hall_ticks,
+        (h == 0 || h == 7) ? "\x1b[1;31m[FAULT]\x1b[0m" : "");
     send_raw(tx_scratch);
 
-    /* Hall monitor sequence */
+    /* Hall sequence – read from the ring captured at commutation speed.
+     * Show the last TUI_HALLSEQ_SHOW transitions.  The ring head advances
+     * in Motor_Commutate() so every transition is captured even between
+     * TUI redraws. */
     tui_goto(TUI_ROW_HALLMON, 1); tui_erase_line();
     send_raw(" HallSeq:");
-    uint8_t count = (hallmon_pos[m] < HALLMON_LEN) ? hallmon_pos[m] : HALLMON_LEN;
-    uint8_t start = (hallmon_pos[m] < HALLMON_LEN) ? 0 : (hallmon_pos[m] % HALLMON_LEN);
-    for (uint8_t i = 0; i < count; i++) {
-        uint8_t v = hallmon_buf[m][(start + i) % HALLMON_LEN];
-        snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[36m%X\x1b[0m", v);
+    {
+        HallRing_t *r = &ms->hall_ring;
+        uint32_t head = r->head;  /* snapshot – may advance under us, that's fine */
+        uint32_t count = (head < TUI_HALLSEQ_SHOW) ? head : TUI_HALLSEQ_SHOW;
+        uint32_t start = head - count;  /* oldest entry to show */
+        for (uint32_t i = 0; i < count; i++) {
+            uint8_t v = r->buf[(start + i) & HALL_RING_MASK];
+            snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[36m%X\x1b[0m", v);
+            send_raw(tx_scratch);
+        }
+        /* Show total transitions captured since last clear */
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "  \x1b[2m(%lu total)\x1b[0m  \x1b[33m[C]\x1b[0mclear", head);
         send_raw(tx_scratch);
+        tui_hall_ring_last[m] = head;
     }
-    send_raw("  \x1b[33m[C]\x1b[0mclear seq");
 
-    /* Ticks */
-    tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
-    snprintf(tx_scratch, sizeof(tx_scratch),
-        " Ticks:  \x1b[36m%ld\x1b[0m  \x1b[33m[T]\x1b[0mreset",
-        (long)Motor_GetTicks(m));
-    send_raw(tx_scratch);
+    /* Ticks row removed – ticks now shown inline with Hall above */
 
     /* Phase map */
     tui_goto(TUI_ROW_MAP, 1); tui_erase_line();
@@ -338,6 +337,13 @@ static void tui_draw_motor_panel(void)
         " PhaseMap:[%d,%d,%d]  "
         "\x1b[33m[A]\x1b[0mnext map  \x1b[33m[Z]\x1b[0mprev map",
         ms->phase_map[0], ms->phase_map[1], ms->phase_map[2]);
+    send_raw(tx_scratch);
+
+    /* Ticks row now shows commutation step for extra debug */
+    tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
+    snprintf(tx_scratch, sizeof(tx_scratch),
+        " CommStep:%u  \x1b[33m[T]\x1b[0mreset ticks",
+        ms->commut_step);
     send_raw(tx_scratch);
 }
 
@@ -429,7 +435,6 @@ static void tui_full_redraw(void)
     tui_draw_gpio();
     tui_draw_help();
     tui_draw_status();
-    /* Park cursor at status row so it doesn't flicker mid-screen */
     tui_goto(TUI_ROW_STATUS + 1, 1);
 }
 
@@ -453,7 +458,6 @@ static void tui_handle_key(uint8_t key)
     MotorState_t *ms = &g_motor[m];
 
     switch (key) {
-    /* Motor select */
     case '1': case '2': case '3':
         tui_selected_motor = key - '1';
         current_perm_idx[tui_selected_motor] = find_perm_idx(tui_selected_motor);
@@ -461,8 +465,6 @@ static void tui_handle_key(uint8_t key)
         tui_needs_full_redraw = 1;
         break;
 
-    /* Enable / Disable - flush RX first so queued arrow repeats don't
-       execute after the user has already pressed a safety key */
     case 'e': case 'E':
         rx_flush();
         Motor_Enable(m);
@@ -474,14 +476,12 @@ static void tui_handle_key(uint8_t key)
         tui_set_status("Motor disabled.");
         break;
 
-    /* Stop all - flush too */
     case 's': case 'S':
         rx_flush();
         Motor_SafeAll();
         tui_set_status("ALL STOPPED.");
         break;
 
-    /* Direction */
     case 'f': case 'F':
         Motor_SetDir(m, DIR_FORWARD);
         tui_set_status("Direction: FORWARD.");
@@ -491,7 +491,6 @@ static void tui_handle_key(uint8_t key)
         tui_set_status("Direction: REVERSE.");
         break;
 
-    /* Duty: direct +10 / -10 with + / - keys (also rate-limited) */
     case '+':
     {
         uint32_t now = HAL_GetTick();
@@ -518,7 +517,6 @@ static void tui_handle_key(uint8_t key)
         tui_set_status("Duty zeroed.");
         break;
 
-    /* Phase map cycle */
     case 'a': case 'A':
         current_perm_idx[m] = (current_perm_idx[m] + 1) % 6;
         Motor_SetPhaseMap(m,
@@ -533,7 +531,7 @@ static void tui_handle_key(uint8_t key)
             current_perm_idx[m]+1);
         break;
     case 'z': case 'Z':
-        current_perm_idx[m] = (current_perm_idx[m] + 5) % 6; /* -1 mod 6 */
+        current_perm_idx[m] = (current_perm_idx[m] + 5) % 6;
         Motor_SetPhaseMap(m,
             phase_perms[current_perm_idx[m]][0],
             phase_perms[current_perm_idx[m]][1],
@@ -546,21 +544,16 @@ static void tui_handle_key(uint8_t key)
             current_perm_idx[m]+1);
         break;
 
-    /* Reset ticks */
     case 't': case 'T':
         Motor_ResetTicks(m);
         tui_set_status("Ticks reset.");
         break;
 
-    /* Clear hall sequence */
     case 'c': case 'C':
-        memset(hallmon_buf[m], 0, HALLMON_LEN);
-        hallmon_pos[m]  = 0;
-        hallmon_prev[m] = 0xFF;
+        Motor_ClearHallRing(m);
         tui_set_status("Hall sequence cleared.");
         break;
 
-    /* Quit TUI -> CMD mode */
     case 'q': case 'Q':
         rx_flush();
         g_mode = MODE_CMD;
@@ -572,9 +565,6 @@ static void tui_handle_key(uint8_t key)
     }
 }
 
-/* Handle arrow / page keys decoded from ESC sequences.
- * Arrow keys are rate-limited to DUTY_KEY_RATE_MS to prevent the key-repeat
- * buffer from driving duty up faster than the user intends. */
 static void tui_handle_escape_final(uint8_t final_byte)
 {
     uint8_t m = tui_selected_motor;
@@ -582,28 +572,28 @@ static void tui_handle_escape_final(uint8_t final_byte)
     uint32_t now = HAL_GetTick();
 
     switch (final_byte) {
-    case 'A': /* up arrow -> duty +10 */
+    case 'A':
         if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
             tui_last_duty_key_ms = now;
             uint16_t d = ms->duty + 10; if (d > DUTY_MAX) d = DUTY_MAX;
             Motor_SetDuty(m, d); tui_set_status("Duty +10.");
         }
         break;
-    case 'B': /* down arrow -> duty -10 */
+    case 'B':
         if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
             tui_last_duty_key_ms = now;
             uint16_t d = (ms->duty >= 10) ? ms->duty - 10 : 0;
             Motor_SetDuty(m, d); tui_set_status("Duty -10.");
         }
         break;
-    case '5': /* PgUp -> duty +100 */
+    case '5':
         if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
             tui_last_duty_key_ms = now;
             uint16_t d = ms->duty + 100; if (d > DUTY_MAX) d = DUTY_MAX;
             Motor_SetDuty(m, d); tui_set_status("Duty +100.");
         }
         break;
-    case '6': /* PgDn -> duty -100 */
+    case '6':
         if (now - tui_last_duty_key_ms >= DUTY_KEY_RATE_MS) {
             tui_last_duty_key_ms = now;
             uint16_t d = (ms->duty >= 100) ? ms->duty - 100 : 0;
@@ -620,9 +610,8 @@ static void tui_handle_escape_final(uint8_t final_byte)
  */
 static void TUI_Process(void)
 {
-    /* Drain RX bytes - process ONE logical keypress per loop iteration so
-       that a buffered flood of arrow repeats cannot monopolise the CPU and
-       prevent the safety keys from being seen promptly. */
+    /* One keypress per loop iteration – prevents arrow-key backlog from
+     * monopolising CPU and blocking safety keys */
     if (rx_tail != rx_head) {
         uint8_t c = rx_buf[rx_tail];
         rx_tail = (rx_tail + 1U) % RX_BUF_SIZE;
@@ -653,7 +642,7 @@ static void TUI_Process(void)
 }
 
 /* =========================================================================
- * CMD mode dispatcher  (unchanged ASCII line protocol)
+ * CMD mode dispatcher
  * =========================================================================
  */
 static void dispatch(char *line)
@@ -731,26 +720,43 @@ static void dispatch(char *line)
             USBCMD_Send(tx_scratch);
         }
 
+    } else if (strcmp(tok, "HALLSEQ") == 0) {
+        /* Dump the full 64-entry ring for the specified motor */
+        char *s_mid=strtok(NULL," \t");
+        if(!s_mid){USBCMD_Send("ERR USAGE: HALLSEQ <motor 1-3>\r\n");return;}
+        int mid=atoi(s_mid)-1;
+        if(mid<0||mid>=MOTOR_COUNT){USBCMD_Send("ERR INVALID_ARG\r\n");return;}
+        HallRing_t *r=&g_motor[mid].hall_ring;
+        uint32_t head=r->head;
+        uint32_t count=(head<HALL_RING_LEN)?head:HALL_RING_LEN;
+        uint32_t start=head-count;
+        snprintf(tx_scratch,sizeof(tx_scratch),"INFO M%d HALLSEQ (%lu transitions):",mid+1,head);
+        USBCMD_Send(tx_scratch);
+        for(uint32_t i=0;i<count;i++){
+            snprintf(tx_scratch,sizeof(tx_scratch)," %X",r->buf[(start+i)&HALL_RING_MASK]);
+            USBCMD_Send(tx_scratch);
+        }
+        USBCMD_Send("\r\n");
+
     } else if (strcmp(tok, "HALLMONITOR") == 0) {
-        /* Stream hall changes until any key received */
         char *s_mid=strtok(NULL," \t");
         if(!s_mid){USBCMD_Send("ERR USAGE: HALLMONITOR <motor 1-3>\r\n");return;}
         int mid=atoi(s_mid)-1;
         if(mid<0||mid>=MOTOR_COUNT){USBCMD_Send("ERR INVALID_ARG\r\n");return;}
         USBCMD_Send("INFO HALLMONITOR running - send any key to stop\r\n");
-        uint8_t prev=0xFF;
+        uint32_t last_head=g_motor[mid].hall_ring.head;
         while(rx_tail==rx_head){
-            uint8_t h=Motor_ReadHall((uint8_t)mid);
-            if(h!=prev){
-                snprintf(tx_scratch,sizeof(tx_scratch),
-                    "INFO M%d HALL: 0x%X HA=%d HB=%d HC=%d\r\n",
-                    mid+1,h,(h>>2)&1,(h>>1)&1,h&1);
+            HallRing_t *r=&g_motor[mid].hall_ring;
+            uint32_t cur_head=r->head;
+            while(last_head!=cur_head){
+                uint8_t v=r->buf[last_head&HALL_RING_MASK];
+                snprintf(tx_scratch,sizeof(tx_scratch),"INFO %X\r\n",v);
                 USBCMD_Send(tx_scratch);
-                prev=h;
+                last_head++;
             }
-            HAL_Delay(5);
+            HAL_Delay(2);
         }
-        rx_tail=(rx_tail+1U)%RX_BUF_SIZE; /* consume stop key */
+        rx_tail=(rx_tail+1U)%RX_BUF_SIZE;
         USBCMD_Send("OK HALLMONITOR stopped\r\n");
 
     } else if (strcmp(tok, "TICKS") == 0) {
@@ -826,7 +832,6 @@ static void dispatch(char *line)
             USBCMD_Send(tx_scratch);
         }
 
-    /* --- debug commands --- */
     } else if (strcmp(tok, "ODRDUMP") == 0) {
         uint32_t oa=GPIOA->ODR,ia=GPIOA->IDR,ob=GPIOB->ODR,ib=GPIOB->IDR;
         USBCMD_Send("INFO --- ODR vs IDR ---\r\n");
@@ -861,7 +866,7 @@ static void dispatch(char *line)
             uint8_t sh=(bit%8)*4,nib=(cr>>sh)&0xF,mode=nib&3,cnf=(nib>>2)&3;
             const char *ms_=(mode==0)?"IN":(mode==1)?"10MHz":(mode==2)?"2MHz":"50MHz";
             const char *cs_;
-            if(mode==0) cs_=(cnf==0)?"analog":(cnf==1)?"float":(cnf==2)?"pull":"pull?";
+            if(mode==0) cs_=(cnf==0)?"analog":(cnf==1)?"float":(cnf==2)?"pull":"pull?"; 
             else        cs_=(cnf==0)?"PP":(cnf==1)?"OD":(cnf==2)?"AF-PP":"AF-OD";
             snprintf(tx_scratch,sizeof(tx_scratch),
                 "INFO   P%s%02u 0x%X %s/%s ODR=%lu IDR=%lu\r\n",
@@ -924,11 +929,10 @@ static void dispatch(char *line)
         USBCMD_Send(tx_scratch);
 
     } else if (strcmp(tok, "RAW") == 0) {
-        /* already in CMD mode, no-op confirmation */
         USBCMD_Send("OK already in CMD mode\r\n");
 
     } else if (strcmp(tok, "HELP") == 0) {
-        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLMONITOR TICKS RESETTICKS MAP GETMAP\r\n");
+        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR TICKS RESETTICKS MAP GETMAP\r\n");
         USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
         USBCMD_Send("INFO Mode:  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
 
@@ -970,14 +974,11 @@ void USBCMD_Init(void)
 {
     rx_head = rx_tail = line_pos = 0;
     memset(line_buf, 0, sizeof(line_buf));
-    memset(hallmon_buf, 0, sizeof(hallmon_buf));
-    memset(hallmon_pos, 0, sizeof(hallmon_pos));
-    for (uint8_t m = 0; m < MOTOR_COUNT; m++) hallmon_prev[m] = 0xFF;
+    memset(tui_hall_ring_last, 0, sizeof(tui_hall_ring_last));
     g_mode = MODE_TUI;
     tui_needs_full_redraw = 1;
     tui_last_refresh_ms = 0;
     tui_last_duty_key_ms = 0;
-    /* small delay to let USB host enumerate before we blast VT100 */
     HAL_Delay(500);
     tui_full_redraw();
 }
