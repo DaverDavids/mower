@@ -71,10 +71,14 @@ static uint32_t tui_last_duty_key_ms = 0;
 typedef enum { ESC_IDLE, ESC_GOT_ESC, ESC_GOT_BRACKET } EscState_t;
 static EscState_t esc_state = ESC_IDLE;
 
-/* Snapshot of ring head last time TUI drew the hall seq row.
- * Used to detect whether the ring has new data without re-rendering
- * the whole panel. */
-static uint32_t tui_hall_ring_last[MOTOR_COUNT];
+/* Per-motor read cursor for the HallSeq TUI row.
+ * Tracks which ring entry was last displayed so each redraw only shows
+ * transitions that occurred SINCE the previous frame.  This prevents
+ * fast spins (many ticks between 100 ms redraws) from appearing to
+ * show only one or two values – every transition gets its turn on screen.
+ *
+ * Initialised to 0; reset to current head by [C]lear. */
+static uint32_t tui_hall_ring_read[MOTOR_COUNT];
 
 /* -------------------------------------------------------------------------
  * RX flush helper - discard all pending bytes in the ring buffer.
@@ -184,8 +188,8 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
  *  Row 6    Direction + key
  *  Row 7    Duty bar + up/down keys
  *  Row 8    Hall state (live)
- *  Row 9    Hall sequence log  (captured at commutation speed)
- *  Row 10   Ticks
+ *  Row 9    Hall sequence log  (new transitions since last frame)
+ *  Row 10   CommStep debug
  *  Row 11   Phase map + swap keys
  *  Row 12   -------------------------------------------------------
  *  Row 13   All-motors summary (compact)
@@ -306,30 +310,66 @@ static void tui_draw_motor_panel(void)
         (h == 0 || h == 7) ? "\x1b[1;31m[FAULT]\x1b[0m" : "");
     send_raw(tx_scratch);
 
-    /* Hall sequence – read from the ring captured at commutation speed.
-     * Show the last TUI_HALLSEQ_SHOW transitions.  The ring head advances
-     * in Motor_Commutate() so every transition is captured even between
-     * TUI redraws. */
+    /* Hall sequence – show transitions that arrived since the last frame.
+     *
+     * tui_hall_ring_read[m] is a persistent read cursor: it advances each
+     * redraw so the display scrolls through ALL captured transitions rather
+     * than always showing the same most-recent 20.
+     *
+     * If more than TUI_HALLSEQ_SHOW new entries arrived since last frame
+     * (fast spin) we skip ahead to keep the display current, but we show
+     * a skipped-count warning so the user knows transitions were missed
+     * on-screen (not in the ring – the ring captured them all).
+     */
     tui_goto(TUI_ROW_HALLMON, 1); tui_erase_line();
     send_raw(" HallSeq:");
     {
         HallRing_t *r = &ms->hall_ring;
-        uint32_t head = r->head;  /* snapshot – may advance under us, that's fine */
-        uint32_t count = (head < TUI_HALLSEQ_SHOW) ? head : TUI_HALLSEQ_SHOW;
-        uint32_t start = head - count;  /* oldest entry to show */
-        for (uint32_t i = 0; i < count; i++) {
-            uint8_t v = r->buf[(start + i) & HALL_RING_MASK];
-            snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[36m%X\x1b[0m", v);
-            send_raw(tx_scratch);
+        uint32_t head = r->head;           /* snapshot – may advance under us */
+        uint32_t rd   = tui_hall_ring_read[m];
+
+        /* Guard: read cursor should never be ahead of head */
+        if (rd > head) rd = head;
+
+        uint32_t available = head - rd;    /* entries not yet displayed */
+        uint32_t skipped   = 0U;
+
+        if (available > TUI_HALLSEQ_SHOW) {
+            /* Too many new entries to fit – skip to the most recent window */
+            skipped = available - TUI_HALLSEQ_SHOW;
+            rd     += skipped;
+            available = TUI_HALLSEQ_SHOW;
         }
+
+        if (available == 0U) {
+            /* Nothing new – show the last entry faintly so row isn't blank */
+            if (head > 0U) {
+                uint8_t v = r->buf[(head - 1U) & HALL_RING_MASK];
+                snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[2;36m%X\x1b[0m", v);
+                send_raw(tx_scratch);
+            }
+        } else {
+            if (skipped > 0U) {
+                snprintf(tx_scratch, sizeof(tx_scratch),
+                    " \x1b[33m(+%lu skipped)\x1b[0m", (unsigned long)skipped);
+                send_raw(tx_scratch);
+            }
+            for (uint32_t i = 0; i < available; i++) {
+                uint8_t v = r->buf[(rd + i) & HALL_RING_MASK];
+                snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[36m%X\x1b[0m", v);
+                send_raw(tx_scratch);
+            }
+            rd += available;  /* advance read cursor past what we displayed */
+        }
+
         /* Show total transitions captured since last clear */
         snprintf(tx_scratch, sizeof(tx_scratch),
-            "  \x1b[2m(%lu total)\x1b[0m  \x1b[33m[C]\x1b[0mclear", head);
+            "  \x1b[2m(%lu total)\x1b[0m  \x1b[33m[C]\x1b[0mclear",
+            (unsigned long)head);
         send_raw(tx_scratch);
-        tui_hall_ring_last[m] = head;
-    }
 
-    /* Ticks row removed – ticks now shown inline with Hall above */
+        tui_hall_ring_read[m] = rd;  /* save updated cursor for next frame */
+    }
 
     /* Phase map */
     tui_goto(TUI_ROW_MAP, 1); tui_erase_line();
@@ -339,7 +379,7 @@ static void tui_draw_motor_panel(void)
         ms->phase_map[0], ms->phase_map[1], ms->phase_map[2]);
     send_raw(tx_scratch);
 
-    /* Ticks row now shows commutation step for extra debug */
+    /* CommStep debug row */
     tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
     snprintf(tx_scratch, sizeof(tx_scratch),
         " CommStep:%u  \x1b[33m[T]\x1b[0mreset ticks",
@@ -551,6 +591,8 @@ static void tui_handle_key(uint8_t key)
 
     case 'c': case 'C':
         Motor_ClearHallRing(m);
+        /* Also reset the read cursor so the display starts fresh */
+        tui_hall_ring_read[m] = 0;
         tui_set_status("Hall sequence cleared.");
         break;
 
@@ -721,7 +763,7 @@ static void dispatch(char *line)
         }
 
     } else if (strcmp(tok, "HALLSEQ") == 0) {
-        /* Dump the full 64-entry ring for the specified motor */
+        /* Dump the full ring for the specified motor */
         char *s_mid=strtok(NULL," \t");
         if(!s_mid){USBCMD_Send("ERR USAGE: HALLSEQ <motor 1-3>\r\n");return;}
         int mid=atoi(s_mid)-1;
@@ -866,7 +908,7 @@ static void dispatch(char *line)
             uint8_t sh=(bit%8)*4,nib=(cr>>sh)&0xF,mode=nib&3,cnf=(nib>>2)&3;
             const char *ms_=(mode==0)?"IN":(mode==1)?"10MHz":(mode==2)?"2MHz":"50MHz";
             const char *cs_;
-            if(mode==0) cs_=(cnf==0)?"analog":(cnf==1)?"float":(cnf==2)?"pull":"pull?"; 
+            if(mode==0) cs_=(cnf==0)?"analog":(cnf==1)?"float":(cnf==2)?"pull":"pull?";
             else        cs_=(cnf==0)?"PP":(cnf==1)?"OD":(cnf==2)?"AF-PP":"AF-OD";
             snprintf(tx_scratch,sizeof(tx_scratch),
                 "INFO   P%s%02u 0x%X %s/%s ODR=%lu IDR=%lu\r\n",
@@ -974,7 +1016,7 @@ void USBCMD_Init(void)
 {
     rx_head = rx_tail = line_pos = 0;
     memset(line_buf, 0, sizeof(line_buf));
-    memset(tui_hall_ring_last, 0, sizeof(tui_hall_ring_last));
+    memset(tui_hall_ring_read, 0, sizeof(tui_hall_ring_read));
     g_mode = MODE_TUI;
     tui_needs_full_redraw = 1;
     tui_last_refresh_ms = 0;

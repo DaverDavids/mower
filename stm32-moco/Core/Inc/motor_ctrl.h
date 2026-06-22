@@ -38,13 +38,15 @@ typedef enum {
 } MotorDir_t;
 
 /* Hall sequence ring – captured in Motor_Commutate(), read by TUI.
- * 64 entries per motor. Power-of-2 so wrap is a bitmask. */
-#define HALL_RING_LEN  64U
+ * 256 entries per motor (was 64 – increased so fast spins don't
+ * overwrite the ring before the 100 ms TUI frame can read it).
+ * Must remain a power-of-2 for the bitmask wrap to work. */
+#define HALL_RING_LEN  256U
 #define HALL_RING_MASK (HALL_RING_LEN - 1U)
 
 typedef struct {
     uint8_t  buf[HALL_RING_LEN];  /* circular buffer of hall values     */
-    uint32_t head;                /* next-write index (mod HALL_RING_LEN) */
+    uint32_t head;                /* monotonically increasing write count */
 } HallRing_t;
 
 /* Per-motor runtime state */

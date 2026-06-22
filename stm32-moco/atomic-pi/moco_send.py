@@ -14,7 +14,8 @@ Examples:
   python3 moco_send.py ticks
   python3 moco_send.py map 2 2 0 1
   python3 moco_send.py stop
-  python3 moco_send.py shell         # enter interactive shell
+  python3 moco_send.py hallmonitor 1     # stream every hall transition for motor 1 (Ctrl-C to stop)
+  python3 moco_send.py shell             # enter interactive shell
 """
 
 import serial
@@ -72,12 +73,84 @@ def interactive_shell(ser: serial.Serial):
         print_responses(lines)
 
 
+def hallmonitor(ser: serial.Serial, motor: int):
+    """
+    Stream every Hall transition for the given motor (1-3) in real time.
+
+    Sends HALLMONITOR <motor> to put the firmware into streaming mode, then
+    prints each INFO line as it arrives.  Send any byte (Ctrl-C here, or any
+    key if connected via a terminal) to tell the firmware to stop.
+
+    The firmware exits streaming mode and replies OK HALLMONITOR stopped.
+    """
+    if motor < 1 or motor > 3:
+        print(f"ERROR: motor must be 1-3, got {motor}", file=sys.stderr)
+        return
+
+    cmd = f"HALLMONITOR {motor}\n"
+    ser.write(cmd.encode())
+    ser.flush()
+
+    # Shorter read timeout so we can react quickly to Ctrl-C
+    ser.timeout = 0.1
+
+    seq_buf = []          # accumulate for single-line display
+    total   = 0
+
+    print(f"[hallmonitor] motor {motor} – streaming hall transitions. Ctrl-C to stop.")
+    print(f"[hallmonitor] format: transition_number: value  (values 1-6 are valid)")
+
+    try:
+        while True:
+            raw = ser.readline()
+            if not raw:
+                continue
+            line = raw.decode(errors="replace").strip()
+            if not line:
+                continue
+
+            if line.startswith("OK "):
+                # Firmware acknowledged stop
+                print(f"\n[hallmonitor] {line}")
+                break
+            elif line.startswith("ERR "):
+                print(f"\n[hallmonitor] {line}", file=sys.stderr)
+                break
+            elif line.startswith("INFO "):
+                payload = line[5:].strip()  # strip "INFO "
+                if payload == "HALLMONITOR running - send any key to stop":
+                    # Confirmation line – ignore, already printed our own header
+                    continue
+                # Each payload is a single hex digit (the hall state 1-6)
+                total += 1
+                print(f"{total:6d}: {payload}")
+            # Ignore any other line silently
+
+    except KeyboardInterrupt:
+        # Tell the firmware to exit streaming mode by sending a byte
+        ser.write(b"\n")
+        ser.flush()
+        # Drain the stop acknowledgment
+        ser.timeout = 1.0
+        while True:
+            raw = ser.readline()
+            if not raw:
+                break
+            line = raw.decode(errors="replace").strip()
+            if line.startswith("OK ") or line.startswith("ERR "):
+                print(f"\n[hallmonitor] {line}")
+                break
+        print(f"\n[hallmonitor] stopped after {total} transitions.")
+    finally:
+        ser.timeout = TIMEOUT_S
+
+
 def main():
     parser = argparse.ArgumentParser(description="stm32-moco host-side tool")
     parser.add_argument("--port", default=DEFAULT_PORT,
                         help=f"Serial port (default: {DEFAULT_PORT})")
     parser.add_argument("command", nargs="+",
-                        help="Command to send, or 'shell' for interactive mode")
+                        help="Command to send, 'hallmonitor <motor>', or 'shell' for interactive mode")
     args = parser.parse_args()
 
     try:
@@ -91,6 +164,20 @@ def main():
 
     if cmd_str.lower() == "shell":
         interactive_shell(ser)
+    elif args.command[0].lower() == "hallmonitor":
+        if len(args.command) < 2:
+            print("ERROR: usage: hallmonitor <motor 1-3>", file=sys.stderr)
+            ser.close()
+            sys.exit(1)
+        try:
+            motor_num = int(args.command[1])
+        except ValueError:
+            print("ERROR: motor must be an integer 1-3", file=sys.stderr)
+            ser.close()
+            sys.exit(1)
+        # Make sure firmware is in CMD mode first (send RAW in case it's in TUI)
+        send_cmd(ser, "RAW", wait_lines=1)
+        hallmonitor(ser, motor_num)
     else:
         responses = send_cmd(ser, cmd_str)
         print_responses(responses)
