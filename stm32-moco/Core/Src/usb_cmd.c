@@ -71,15 +71,6 @@ static uint32_t tui_last_duty_key_ms = 0;
 typedef enum { ESC_IDLE, ESC_GOT_ESC, ESC_GOT_BRACKET } EscState_t;
 static EscState_t esc_state = ESC_IDLE;
 
-/* Per-motor read cursor for the HallSeq TUI row.
- * Tracks which ring entry was last displayed so each redraw only shows
- * transitions that occurred SINCE the previous frame.  This prevents
- * fast spins (many ticks between 100 ms redraws) from appearing to
- * show only one or two values - every transition gets its turn on screen.
- *
- * Initialised to 0; reset to current head by [C]lear. */
-static uint32_t tui_hall_ring_read[MOTOR_COUNT];
-
 /* -------------------------------------------------------------------------
  * RX flush helper - discard all pending bytes in the ring buffer.
  * -------------------------------------------------------------------------
@@ -188,7 +179,7 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
  *  Row 6    Direction + key
  *  Row 7    Duty bar + up/down keys
  *  Row 8    Hall state (live)
- *  Row 9    Hall sequence log  (new transitions since last frame)
+ *  Row 9    Hall sequence log  (last TUI_HALLSEQ_SHOW transitions)
  *  Row 10   CommStep debug
  *  Row 11   Phase map + swap keys
  *  Row 12   -------------------------------------------------------
@@ -310,65 +301,38 @@ static void tui_draw_motor_panel(void)
         (h == 0 || h == 7) ? "\x1b[1;31m[FAULT]\x1b[0m" : "");
     send_raw(tx_scratch);
 
-    /* Hall sequence - show transitions that arrived since the last frame.
+    /* Hall sequence - always show the last TUI_HALLSEQ_SHOW entries from
+     * the ring so the row is live on every redraw.
      *
-     * tui_hall_ring_read[m] is a persistent read cursor: it advances each
-     * redraw so the display scrolls through ALL captured transitions rather
-     * than always showing the same most-recent 20.
-     *
-     * If more than TUI_HALLSEQ_SHOW new entries arrived since last frame
-     * (fast spin) we skip ahead to keep the display current, but we show
-     * a skipped-count warning so the user knows transitions were missed
-     * on-screen (not in the ring - the ring captured them all).
-     */
+     * We do NOT use a persistent read cursor here.  A cursor that advances
+     * each frame races to head==cursor in a single redraw (one frame can
+     * consume all available entries) and then shows nothing forever after.
+     * Instead, every frame we simply display the most-recent entries
+     * relative to the current head - the display scrolls naturally as the
+     * wheel turns and new transitions push the window forward. */
     tui_goto(TUI_ROW_HALLMON, 1); tui_erase_line();
     send_raw(" HallSeq:");
     {
         HallRing_t *r = &ms->hall_ring;
-        uint32_t head = r->head;           /* snapshot - may advance under us */
-        uint32_t rd   = tui_hall_ring_read[m];
+        uint32_t head  = r->head;   /* snapshot */
+        uint32_t count = (head < HALL_RING_LEN) ? head : HALL_RING_LEN;
+        uint32_t show  = (count < TUI_HALLSEQ_SHOW) ? count : TUI_HALLSEQ_SHOW;
+        uint32_t start = head - show;   /* index of oldest entry to display */
 
-        /* Guard: read cursor should never be ahead of head */
-        if (rd > head) rd = head;
-
-        uint32_t available = head - rd;    /* entries not yet displayed */
-        uint32_t skipped   = 0U;
-
-        if (available > TUI_HALLSEQ_SHOW) {
-            /* Too many new entries to fit - skip to the most recent window */
-            skipped = available - TUI_HALLSEQ_SHOW;
-            rd     += skipped;
-            available = TUI_HALLSEQ_SHOW;
-        }
-
-        if (available == 0U) {
-            /* Nothing new - show the last entry faintly so row isn't blank */
-            if (head > 0U) {
-                uint8_t v = r->buf[(head - 1U) & HALL_RING_MASK];
-                snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[2;36m%X\x1b[0m", v);
-                send_raw(tx_scratch);
-            }
+        if (show == 0U) {
+            send_raw(" \x1b[2;36m--\x1b[0m");
         } else {
-            if (skipped > 0U) {
-                snprintf(tx_scratch, sizeof(tx_scratch),
-                    " \x1b[33m(+%lu skipped)\x1b[0m", (unsigned long)skipped);
-                send_raw(tx_scratch);
-            }
-            for (uint32_t i = 0; i < available; i++) {
-                uint8_t v = r->buf[(rd + i) & HALL_RING_MASK];
+            for (uint32_t i = 0; i < show; i++) {
+                uint8_t v = r->buf[(start + i) & HALL_RING_MASK];
                 snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[36m%X\x1b[0m", v);
                 send_raw(tx_scratch);
             }
-            rd += available;  /* advance read cursor past what we displayed */
         }
 
-        /* Show total transitions captured since last clear */
         snprintf(tx_scratch, sizeof(tx_scratch),
             "  \x1b[2m(%lu total)\x1b[0m  \x1b[33m[C]\x1b[0mclear",
             (unsigned long)head);
         send_raw(tx_scratch);
-
-        tui_hall_ring_read[m] = rd;  /* save updated cursor for next frame */
     }
 
     /* Phase map */
@@ -591,8 +555,6 @@ static void tui_handle_key(uint8_t key)
 
     case 'c': case 'C':
         Motor_ClearHallRing(m);
-        /* Also reset the read cursor so the display starts fresh */
-        tui_hall_ring_read[m] = 0;
         tui_set_status("Hall sequence cleared.");
         break;
 
@@ -765,9 +727,6 @@ static void dispatch(char *line)
         USBCMD_Send("OK HALL\r\n");
 
     } else if (strcmp(tok, "HALLSEQ") == 0) {
-        /* Dump the full ring for the specified motor.
-         * Response format:  INFO M1 HALLSEQ (736 transitions): 1 5 3 2 ...
-         * All values on one line so the Python parser can split on ":" once. */
         char *s_mid=strtok(NULL," \t");
         if(!s_mid){USBCMD_Send("ERR USAGE: HALLSEQ <motor 1-3>\r\n");return;}
         int mid=atoi(s_mid)-1;
@@ -787,8 +746,6 @@ static void dispatch(char *line)
         USBCMD_Send("OK HALLSEQ\r\n");
 
     } else if (strcmp(tok, "CLEARRING") == 0) {
-        /* Clear the hall ring buffer for a motor (or all motors).
-         * Usage: CLEARRING <motor 1-3>  or  CLEARRING ALL */
         char *s_mid=strtok(NULL," \t");
         if(!s_mid){USBCMD_Send("ERR USAGE: CLEARRING <motor 1-3>\r\n");return;}
         if(strcmp(s_mid,"ALL")==0){
@@ -1045,7 +1002,6 @@ void USBCMD_Init(void)
 {
     rx_head = rx_tail = line_pos = 0;
     memset(line_buf, 0, sizeof(line_buf));
-    memset(tui_hall_ring_read, 0, sizeof(tui_hall_ring_read));
     g_mode = MODE_TUI;
     tui_needs_full_redraw = 1;
     tui_last_refresh_ms = 0;

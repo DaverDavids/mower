@@ -242,6 +242,11 @@ void Motor_ClearHallRing(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return;
     memset(&g_motor[motor_id].hall_ring, 0, sizeof(HallRing_t));
+    /* Reset hall_state to 0 (invalid) so the very next transition is always
+     * captured.  Without this, the dedup check (new_hall != ms->hall_state)
+     * would skip the first real transition after a clear because hall_state
+     * still holds the last sampled value. */
+    g_motor[motor_id].hall_state = 0;
 }
 
 void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
