@@ -22,6 +22,7 @@
 #include "stm32f1xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "motor_ctrl.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -179,11 +180,20 @@ void PendSV_Handler(void)
 
 /**
   * @brief This function handles System tick timer.
+  *
+  * Motor_CommutateAll() is called here (1 kHz / every 1 ms) so that every
+  * Hall-sensor edge is captured regardless of how long the main loop spends
+  * inside USBCMD_Process() or the TUI 100 ms refresh.  Previously commutation
+  * only ran in the main loop and could miss hundreds of transitions per
+  * second at any useful motor speed (1536 ticks counted but only ~11 visible
+  * in the ring was a direct symptom of this).  The ring buffer is written
+  * here; the TUI and HALLMONITOR command only read it, so there is no
+  * concurrent-write conflict.
   */
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-
+  Motor_CommutateAll();
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */

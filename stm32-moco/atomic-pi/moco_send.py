@@ -35,7 +35,7 @@ def open_port(port: str) -> serial.Serial:
 
 
 def send_cmd(ser: serial.Serial, cmd: str, wait_lines: int = READ_LINES) -> list[str]:
-    """Send a command and collect response lines until timeout or INFO/OK/ERR."""
+    """Send a command and collect response lines until timeout or OK/ERR."""
     ser.write((cmd.strip().upper() + "\n").encode())
     ser.flush()
     responses = []
@@ -78,10 +78,12 @@ def hallmonitor(ser: serial.Serial, motor: int):
     Stream every Hall transition for the given motor (1-3) in real time.
 
     Sends HALLMONITOR <motor> to put the firmware into streaming mode, then
-    prints each INFO line as it arrives.  Send any byte (Ctrl-C here, or any
-    key if connected via a terminal) to tell the firmware to stop.
+    prints each INFO line as it arrives.  Press Ctrl-C to stop; this sends
+    a newline to the firmware which exits streaming mode and replies
+    OK HALLMONITOR stopped.
 
-    The firmware exits streaming mode and replies OK HALLMONITOR stopped.
+    Output format:
+        <transition_number>: <hall_value>   (hall values 1-6 are valid)
     """
     if motor < 1 or motor > 3:
         print(f"ERROR: motor must be 1-3, got {motor}", file=sys.stderr)
@@ -94,8 +96,7 @@ def hallmonitor(ser: serial.Serial, motor: int):
     # Shorter read timeout so we can react quickly to Ctrl-C
     ser.timeout = 0.1
 
-    seq_buf = []          # accumulate for single-line display
-    total   = 0
+    total = 0
 
     print(f"[hallmonitor] motor {motor} – streaming hall transitions. Ctrl-C to stop.")
     print(f"[hallmonitor] format: transition_number: value  (values 1-6 are valid)")
@@ -110,24 +111,22 @@ def hallmonitor(ser: serial.Serial, motor: int):
                 continue
 
             if line.startswith("OK "):
-                # Firmware acknowledged stop
                 print(f"\n[hallmonitor] {line}")
                 break
             elif line.startswith("ERR "):
                 print(f"\n[hallmonitor] {line}", file=sys.stderr)
                 break
             elif line.startswith("INFO "):
-                payload = line[5:].strip()  # strip "INFO "
+                payload = line[5:].strip()
                 if payload == "HALLMONITOR running - send any key to stop":
-                    # Confirmation line – ignore, already printed our own header
+                    # Firmware confirmation line – already printed our own header
                     continue
-                # Each payload is a single hex digit (the hall state 1-6)
                 total += 1
                 print(f"{total:6d}: {payload}")
             # Ignore any other line silently
 
     except KeyboardInterrupt:
-        # Tell the firmware to exit streaming mode by sending a byte
+        # Send a byte to tell the firmware to exit streaming mode
         ser.write(b"\n")
         ser.flush()
         # Drain the stop acknowledgment
@@ -155,7 +154,6 @@ def main():
 
     try:
         ser = open_port(args.port)
-        #time.sleep(0.5)   # let USB CDC re-enumerate after DTR assert
     except serial.SerialException as e:
         print(f"ERROR: Cannot open {args.port}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -175,7 +173,7 @@ def main():
             print("ERROR: motor must be an integer 1-3", file=sys.stderr)
             ser.close()
             sys.exit(1)
-        # Make sure firmware is in CMD mode first (send RAW in case it's in TUI)
+        # Make sure firmware is in CMD mode before starting stream
         send_cmd(ser, "RAW", wait_lines=1)
         hallmonitor(ser, motor_num)
     else:
