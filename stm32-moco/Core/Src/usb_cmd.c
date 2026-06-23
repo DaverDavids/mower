@@ -767,11 +767,16 @@ static void dispatch(char *line)
         USBCMD_Send("INFO HALLMONITOR running - send any key to stop\r\n");
         uint32_t last_head=g_motor[mid].hall_ring.head;
         while(rx_tail==rx_head){
+            /* Keep commutation running so the hall ring receives new entries
+             * while this blocking loop is active.  Without this call the main
+             * loop is frozen and Motor_Commutate() never fires, so hall_ring.head
+             * never advances and no transitions are ever reported. */
+            Motor_CommutateAll();
             HallRing_t *r=&g_motor[mid].hall_ring;
             uint32_t cur_head=r->head;
             while(last_head!=cur_head){
                 uint8_t v=r->buf[last_head&HALL_RING_MASK];
-                snprintf(tx_scratch,sizeof(tx_scratch),"INFO %X\r\n",v);
+                snprintf(tx_scratch,sizeof(tx_scratch),"INFO HALL %X\r\n",v);
                 USBCMD_Send(tx_scratch);
                 last_head++;
             }
