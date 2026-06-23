@@ -40,13 +40,18 @@ typedef enum {
 /* Hall sequence ring – captured in Motor_Commutate(), read by TUI.
  * 256 entries per motor (was 64 – increased so fast spins don't
  * overwrite the ring before the 100 ms TUI frame can read it).
- * Must remain a power-of-2 for the bitmask wrap to work. */
+ * Must remain a power-of-2 for the bitmask wrap to work.
+ *
+ * Both fields are volatile: Motor_Commutate() runs from SysTick ISR
+ * and writes buf[]/head while the HALLMONITOR spin-loop (main context)
+ * reads them.  Without volatile the compiler can hoist head into a
+ * register and the monitor loop never sees new transitions. */
 #define HALL_RING_LEN  256U
 #define HALL_RING_MASK (HALL_RING_LEN - 1U)
 
 typedef struct {
-    uint8_t  buf[HALL_RING_LEN];  /* circular buffer of hall values     */
-    uint32_t head;                /* monotonically increasing write count */
+    volatile uint8_t  buf[HALL_RING_LEN];  /* circular buffer of hall values     */
+    volatile uint32_t head;                /* monotonically increasing write count */
 } HallRing_t;
 
 /* Per-motor runtime state */
