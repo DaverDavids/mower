@@ -75,7 +75,7 @@ static EscState_t esc_state = ESC_IDLE;
  * Tracks which ring entry was last displayed so each redraw only shows
  * transitions that occurred SINCE the previous frame.  This prevents
  * fast spins (many ticks between 100 ms redraws) from appearing to
- * show only one or two values – every transition gets its turn on screen.
+ * show only one or two values - every transition gets its turn on screen.
  *
  * Initialised to 0; reset to current head by [C]lear. */
 static uint32_t tui_hall_ring_read[MOTOR_COUNT];
@@ -300,7 +300,7 @@ static void tui_draw_motor_panel(void)
         ms->duty, DUTY_MAX);
     send_raw(tx_scratch);
 
-    /* Hall – live current state */
+    /* Hall - live current state */
     tui_goto(TUI_ROW_HALL, 1); tui_erase_line();
     uint8_t h = Motor_ReadHall(m);
     snprintf(tx_scratch, sizeof(tx_scratch),
@@ -310,7 +310,7 @@ static void tui_draw_motor_panel(void)
         (h == 0 || h == 7) ? "\x1b[1;31m[FAULT]\x1b[0m" : "");
     send_raw(tx_scratch);
 
-    /* Hall sequence – show transitions that arrived since the last frame.
+    /* Hall sequence - show transitions that arrived since the last frame.
      *
      * tui_hall_ring_read[m] is a persistent read cursor: it advances each
      * redraw so the display scrolls through ALL captured transitions rather
@@ -319,13 +319,13 @@ static void tui_draw_motor_panel(void)
      * If more than TUI_HALLSEQ_SHOW new entries arrived since last frame
      * (fast spin) we skip ahead to keep the display current, but we show
      * a skipped-count warning so the user knows transitions were missed
-     * on-screen (not in the ring – the ring captured them all).
+     * on-screen (not in the ring - the ring captured them all).
      */
     tui_goto(TUI_ROW_HALLMON, 1); tui_erase_line();
     send_raw(" HallSeq:");
     {
         HallRing_t *r = &ms->hall_ring;
-        uint32_t head = r->head;           /* snapshot – may advance under us */
+        uint32_t head = r->head;           /* snapshot - may advance under us */
         uint32_t rd   = tui_hall_ring_read[m];
 
         /* Guard: read cursor should never be ahead of head */
@@ -335,14 +335,14 @@ static void tui_draw_motor_panel(void)
         uint32_t skipped   = 0U;
 
         if (available > TUI_HALLSEQ_SHOW) {
-            /* Too many new entries to fit – skip to the most recent window */
+            /* Too many new entries to fit - skip to the most recent window */
             skipped = available - TUI_HALLSEQ_SHOW;
             rd     += skipped;
             available = TUI_HALLSEQ_SHOW;
         }
 
         if (available == 0U) {
-            /* Nothing new – show the last entry faintly so row isn't blank */
+            /* Nothing new - show the last entry faintly so row isn't blank */
             if (head > 0U) {
                 uint8_t v = r->buf[(head - 1U) & HALL_RING_MASK];
                 snprintf(tx_scratch, sizeof(tx_scratch), " \x1b[2;36m%X\x1b[0m", v);
@@ -652,7 +652,7 @@ static void tui_handle_escape_final(uint8_t final_byte)
  */
 static void TUI_Process(void)
 {
-    /* One keypress per loop iteration – prevents arrow-key backlog from
+    /* One keypress per loop iteration - prevents arrow-key backlog from
      * monopolising CPU and blocking safety keys */
     if (rx_tail != rx_head) {
         uint8_t c = rx_buf[rx_tail];
@@ -752,6 +752,7 @@ static void dispatch(char *line)
                 ms->phase_map[0],ms->phase_map[1],ms->phase_map[2]);
             USBCMD_Send(tx_scratch);
         }
+        USBCMD_Send("OK STATUS\r\n");
 
     } else if (strcmp(tok, "HALL") == 0) {
         for(uint8_t m=0;m<MOTOR_COUNT;m++){
@@ -761,9 +762,12 @@ static void dispatch(char *line)
                 m+1,h,(h>>2)&1,(h>>1)&1,h&1);
             USBCMD_Send(tx_scratch);
         }
+        USBCMD_Send("OK HALL\r\n");
 
     } else if (strcmp(tok, "HALLSEQ") == 0) {
-        /* Dump the full ring for the specified motor */
+        /* Dump the full ring for the specified motor.
+         * Response format:  INFO M1 HALLSEQ (736 transitions): 1 5 3 2 ...
+         * All values on one line so the Python parser can split on ":" once. */
         char *s_mid=strtok(NULL," \t");
         if(!s_mid){USBCMD_Send("ERR USAGE: HALLSEQ <motor 1-3>\r\n");return;}
         int mid=atoi(s_mid)-1;
@@ -772,13 +776,31 @@ static void dispatch(char *line)
         uint32_t head=r->head;
         uint32_t count=(head<HALL_RING_LEN)?head:HALL_RING_LEN;
         uint32_t start=head-count;
-        snprintf(tx_scratch,sizeof(tx_scratch),"INFO M%d HALLSEQ (%lu transitions):",mid+1,head);
+        snprintf(tx_scratch,sizeof(tx_scratch),
+            "INFO M%d HALLSEQ (%lu transitions):",mid+1,(unsigned long)head);
         USBCMD_Send(tx_scratch);
         for(uint32_t i=0;i<count;i++){
             snprintf(tx_scratch,sizeof(tx_scratch)," %X",r->buf[(start+i)&HALL_RING_MASK]);
             USBCMD_Send(tx_scratch);
         }
         USBCMD_Send("\r\n");
+        USBCMD_Send("OK HALLSEQ\r\n");
+
+    } else if (strcmp(tok, "CLEARRING") == 0) {
+        /* Clear the hall ring buffer for a motor (or all motors).
+         * Usage: CLEARRING <motor 1-3>  or  CLEARRING ALL */
+        char *s_mid=strtok(NULL," \t");
+        if(!s_mid){USBCMD_Send("ERR USAGE: CLEARRING <motor 1-3>\r\n");return;}
+        if(strcmp(s_mid,"ALL")==0){
+            for(uint8_t m=0;m<MOTOR_COUNT;m++) Motor_ClearHallRing(m);
+            USBCMD_Send("OK CLEARRING ALL\r\n");
+        } else {
+            int mid=atoi(s_mid)-1;
+            if(mid<0||mid>=MOTOR_COUNT){USBCMD_Send("ERR INVALID_ARG\r\n");return;}
+            Motor_ClearHallRing((uint8_t)mid);
+            snprintf(tx_scratch,sizeof(tx_scratch),"OK CLEARRING M%d\r\n",mid+1);
+            USBCMD_Send(tx_scratch);
+        }
 
     } else if (strcmp(tok, "HALLMONITOR") == 0) {
         char *s_mid=strtok(NULL," \t");
@@ -807,6 +829,7 @@ static void dispatch(char *line)
                 "INFO M%d TICKS: %ld\r\n",m+1,(long)Motor_GetTicks(m));
             USBCMD_Send(tx_scratch);
         }
+        USBCMD_Send("OK TICKS\r\n");
 
     } else if (strcmp(tok, "RESETTICKS") == 0) {
         char *s_mid=strtok(NULL," \t");
@@ -873,6 +896,7 @@ static void dispatch(char *line)
                 p->name,level,p->output?"OUT":"IN",p->pwm_only?"/PWM":"");
             USBCMD_Send(tx_scratch);
         }
+        USBCMD_Send("OK PINS\r\n");
 
     } else if (strcmp(tok, "ODRDUMP") == 0) {
         uint32_t oa=GPIOA->ODR,ia=GPIOA->IDR,ob=GPIOB->ODR,ib=GPIOB->IDR;
@@ -893,6 +917,7 @@ static void dispatch(char *line)
             }
         }
         if(!found) USBCMD_Send("INFO   (no stuck pins)\r\n");
+        USBCMD_Send("OK ODRDUMP\r\n");
 
     } else if (strcmp(tok, "REGS") == 0) {
         char *s_port=strtok(NULL," \t");
@@ -915,6 +940,7 @@ static void dispatch(char *line)
                 pn+4,bit,nib,ms_,cs_,(port->ODR>>bit)&1,(port->IDR>>bit)&1);
             USBCMD_Send(tx_scratch);
         }
+        USBCMD_Send("OK REGS\r\n");
 
     } else if (strcmp(tok, "CRLCONF") == 0) {
         char *sp=strtok(NULL," \t"),*sb=strtok(NULL," \t");
@@ -930,6 +956,7 @@ static void dispatch(char *line)
             "INFO %s%d nib=0x%X mode=%u cnf=%u ODR=%lu IDR=%lu\r\n",
             pn,bit,nib,mode,cnf,(port->ODR>>bit)&1,(port->IDR>>bit)&1);
         USBCMD_Send(tx_scratch);
+        USBCMD_Send("OK CRLCONF\r\n");
 
     } else if (strcmp(tok, "SETBSRR") == 0) {
         char *sp=strtok(NULL," \t"),*sb=strtok(NULL," \t"),*sv=strtok(NULL," \t");
@@ -969,14 +996,16 @@ static void dispatch(char *line)
             "INFO MAPR=0x%08lX SWJ=%u(%s) TIM1=%lu TIM2=%lu TIM3=%lu TIM4=%lu\r\n",
             mapr,swj,ss,(mapr>>6)&3,(mapr>>8)&3,(mapr>>10)&3,(mapr>>12)&1);
         USBCMD_Send(tx_scratch);
+        USBCMD_Send("OK AFIO\r\n");
 
     } else if (strcmp(tok, "RAW") == 0) {
         USBCMD_Send("OK already in CMD mode\r\n");
 
     } else if (strcmp(tok, "HELP") == 0) {
-        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR TICKS RESETTICKS MAP GETMAP\r\n");
+        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP\r\n");
         USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
         USBCMD_Send("INFO Mode:  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
+        USBCMD_Send("OK HELP\r\n");
 
     } else {
         snprintf(tx_scratch,sizeof(tx_scratch),"ERR UNKNOWN_CMD: %s\r\n",tok);
