@@ -120,8 +120,11 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    /* Run 6-step commutation for all motors based on live Hall readings */
-    Motor_CommutateAll();
+    /* Motor_CommutateAll() is called exclusively from SysTick_Handler
+     * (1 kHz). Calling it here as well would create a race condition
+     * where the ISR updates hall_state mid-step and the main loop
+     * resumes with a stale new_hall, producing jitter and wrong PWM
+     * (Bug 1 fix – removed from here). */
 
     /* Process any pending USB CDC commands from the Atomic Pi */
     USBCMD_Process();
@@ -256,6 +259,9 @@ static void MX_TIM1_Init(void)
   /* Override BDTR after CubeMX init: enable OSSR+OSSI so TIM1 complementary
    * outputs (PB13/14/15 = M1LSA/B/C) are forced LOW when MOE is off.
    * Without this they float/latch high at idle.
+   * AutomaticOutput=DISABLE ensures MOE can only be re-enabled explicitly
+   * via __HAL_TIM_MOE_ENABLE – Motor_SafeAll()/all_off() cannot be
+   * circumvented by hardware (Bug 3 fix).
    * Placed in USER CODE so CubeMX regeneration does not remove it. */
   sBreakDeadTimeConfig.OffStateRunMode  = TIM_OSSR_ENABLE;
   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_ENABLE;
