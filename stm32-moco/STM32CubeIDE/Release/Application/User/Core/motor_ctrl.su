@@ -8,7 +8,7 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:210:6:Mot
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:219:9:Motor_ReadHall	16	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:229:9:Motor_GetTicks	0	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:235:6:Motor_ResetTicks	0	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:241:6:Motor_ClearHallRing	4	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:247:6:Motor_SetPhaseMap	12	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:265:6:Motor_Commutate	64	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:323:6:Motor_CommutateAll	8	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:241:6:Motor_ClearHallRing	16	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:252:6:Motor_SetPhaseMap	12	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:270:6:Motor_Commutate	64	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:328:6:Motor_CommutateAll	8	static
