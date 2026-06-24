@@ -68,6 +68,24 @@ static const uint32_t TIM_CH[3] = {
     TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3
 };
 
+/*
+ * TIM1 CCER bit masks for each channel pair.
+ * CCxE  = main (high-side) output enable
+ * CCxNE = complementary (low-side) output enable
+ * Used by Motor_Commutate to ensure ONLY the active pair is enabled,
+ * preventing inactive CCxNE bits from holding low-side MOSFETs ON
+ * (Bug 2 fix).
+ */
+#define TIM1_CCER_CC1E   (1U << 0)
+#define TIM1_CCER_CC1NE  (1U << 2)
+#define TIM1_CCER_CC2E   (1U << 4)
+#define TIM1_CCER_CC2NE  (1U << 6)
+#define TIM1_CCER_CC3E   (1U << 8)
+#define TIM1_CCER_CC3NE  (1U << 10)
+
+static const uint16_t TIM1_CCER_CCE[3]  = { TIM1_CCER_CC1E,  TIM1_CCER_CC2E,  TIM1_CCER_CC3E  };
+static const uint16_t TIM1_CCER_CCNE[3] = { TIM1_CCER_CC1NE, TIM1_CCER_CC2NE, TIM1_CCER_CC3NE };
+
 /* -------------------------------------------------------------------------
  * Motor hardware descriptors
  * -------------------------------------------------------------------------
@@ -128,6 +146,11 @@ static void all_off(uint8_t mid)
         }
     }
     if (hw->is_advanced) {
+        /* Clear all CCxE and CCxNE bits so no complementary output can
+         * invert to 1 while CCR=0 (Bug 2 fix for idle/off state). */
+        hw->htim->Instance->CCER &= ~(TIM1_CCER_CC1E  | TIM1_CCER_CC1NE |
+                                      TIM1_CCER_CC2E  | TIM1_CCER_CC2NE |
+                                      TIM1_CCER_CC3E  | TIM1_CCER_CC3NE);
         __HAL_TIM_MOE_DISABLE(hw->htim);
     }
 }
@@ -161,13 +184,19 @@ void Motor_Init(void)
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
             TIM_BreakDeadTimeConfigTypeDef bdtConfig = {0};
-            bdtConfig.OffStateRunMode   = TIM_OSSR_DISABLE;
-            bdtConfig.OffStateIDLEMode  = TIM_OSSI_DISABLE;
+            /* Bug 3 fix: OSSR/OSSI=ENABLE forces complementary outputs LOW
+             * when MOE is off, preventing gate float on TIM1 (B13/14/15).
+             * AutomaticOutput=DISABLE ensures MOE is only re-enabled by an
+             * explicit __HAL_TIM_MOE_ENABLE call – hardware cannot
+             * re-enable it at the next update event, which would defeat
+             * Motor_SafeAll() and all_off(). */
+            bdtConfig.OffStateRunMode   = TIM_OSSR_ENABLE;
+            bdtConfig.OffStateIDLEMode  = TIM_OSSI_ENABLE;
             bdtConfig.LockLevel         = TIM_LOCKLEVEL_OFF;
             bdtConfig.DeadTime          = TIM1_DEADTIME;
             bdtConfig.BreakState        = TIM_BREAK_DISABLE;
             bdtConfig.BreakPolarity     = TIM_BREAKPOLARITY_HIGH;
-            bdtConfig.AutomaticOutput   = TIM_AUTOMATICOUTPUT_ENABLE;
+            bdtConfig.AutomaticOutput   = TIM_AUTOMATICOUTPUT_DISABLE;
             HAL_TIMEx_ConfigBreakDeadTime(MOTOR_HW[m].htim, &bdtConfig);
         }
 
@@ -260,7 +289,7 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 
 /* -------------------------------------------------------------------------
  * 6-step commutation for one motor.
- * Call this frequently (main loop or timer interrupt).
+ * Call this frequently (SysTick ISR only – NOT from main loop; see Bug 1).
  *
  * Hall ring capture happens HERE – every genuine transition is recorded
  * regardless of how fast the TUI redraws.  The ring holds 64 entries
@@ -309,11 +338,26 @@ void Motor_Commutate(uint8_t mid)
     uint8_t phys_high = ms->phase_map[step.high];
     uint8_t phys_low  = ms->phase_map[step.low];
 
+    /* Zero all CCRs first */
     for (uint8_t ch = 0; ch < 3; ch++) {
         __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[ch], 0);
         if (!hw->is_advanced && hw->ls_port[ch] != NULL) {
             HAL_GPIO_WritePin(hw->ls_port[ch], hw->ls_pin[ch], GPIO_PIN_RESET);
         }
+    }
+
+    if (hw->is_advanced) {
+        /* Bug 2 fix: clear ALL CCxE/CCxNE bits, then enable only the
+         * active high-side CCxE and active low-side CCxNE.
+         * Previously CCER was never touched here – all six CCxNE bits
+         * remained set from HAL_TIMEx_PWMN_Start(). With CCR=0 in
+         * PWM1 mode the OCxN output inverts to 1, turning every
+         * inactive low-side MOSFET fully ON and short-circuiting
+         * two phase terminals together. */
+        hw->htim->Instance->CCER &= ~(TIM1_CCER_CC1E  | TIM1_CCER_CC1NE |
+                                      TIM1_CCER_CC2E  | TIM1_CCER_CC2NE |
+                                      TIM1_CCER_CC3E  | TIM1_CCER_CC3NE);
+        hw->htim->Instance->CCER |= TIM1_CCER_CCE[phys_high] | TIM1_CCER_CCNE[phys_low];
     }
 
     __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], ms->duty);

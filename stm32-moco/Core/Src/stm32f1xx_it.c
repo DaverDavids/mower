@@ -90,7 +90,7 @@ void HardFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
+    /* USER CODE W1_HardFault_IRQn 0 */
   }
 }
 
@@ -181,14 +181,12 @@ void PendSV_Handler(void)
 /**
   * @brief This function handles System tick timer.
   *
-  * Motor_CommutateAll() is called here (1 kHz / every 1 ms) so that every
-  * Hall-sensor edge is captured regardless of how long the main loop spends
-  * inside USBCMD_Process() or the TUI 100 ms refresh.  Previously commutation
-  * only ran in the main loop and could miss hundreds of transitions per
-  * second at any useful motor speed (1536 ticks counted but only ~11 visible
-  * in the ring was a direct symptom of this).  The ring buffer is written
-  * here; the TUI and HALLMONITOR command only read it, so there is no
-  * concurrent-write conflict.
+  * Motor_CommutateAll() runs exclusively here at 1 kHz so every Hall
+  * transition is captured with a consistent, interrupt-driven cadence.
+  * It must NOT also be called from the main loop – doing so creates a
+  * race where SysTick writes hall_state mid-step and the main loop
+  * resumes with a stale new_hall value, producing wrong PWM output
+  * (Bug 1 fix).
   */
 void SysTick_Handler(void)
 {
