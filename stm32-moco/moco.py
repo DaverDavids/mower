@@ -24,8 +24,17 @@ Key bindings (TUI mode):
   T              reset ticks
   C              clear hall sequence (clears ring on firmware too)
   M              enter hallmonitor streaming mode (any key to exit)
+  P              enter pin test screen
   S              stop all
   Q / Ctrl-C     quit
+
+Pin test screen (P from main):
+  Left / Right   select pin
+  Space          toggle pin high/low (PINTEST cmd - stops timer, drives GPIO)
+  H / L          force selected pin high / low
+  R              read back IDR of selected pin
+  A              read ALL pins IDR
+  Q / Esc        return to main screen
 """
 
 import sys
@@ -41,10 +50,47 @@ from collections import deque
 # ---------------------------------------------------------------------------
 MOTOR_COUNT = 3
 DUTY_MAX    = 1440
-HALLMON_LEN = 64   # match firmware HALL_RING_LEN for full visibility
+HALLMON_LEN = 64
 
 PHASE_PERMS = [
     (0,1,2),(0,2,1),(1,0,2),(1,2,0),(2,0,1),(2,1,0)
+]
+
+# ---------------------------------------------------------------------------
+# Pin catalogue  (name, mcu_pin, type, motor_group)
+# type: 'HS-PWM', 'LS-GPIO', 'HALL'
+# ---------------------------------------------------------------------------
+PIN_CATALOGUE = [
+    # Motor 1
+    ("M1HSA",  "A8",  "HS-PWM", "M1"),
+    ("M1HSB",  "A9",  "HS-PWM", "M1"),
+    ("M1HSC",  "A10", "HS-PWM", "M1"),
+    ("M1LSA",  "B13", "LS-PWM", "M1"),
+    ("M1LSB",  "B14", "LS-PWM", "M1"),
+    ("M1LSC",  "B15", "LS-PWM", "M1"),
+    ("M1HA",   "A0",  "HALL",   "M1"),
+    ("M1HB",   "A1",  "HALL",   "M1"),
+    ("M1HC",   "A2",  "HALL",   "M1"),
+    # Motor 2
+    ("M2HSA",  "B6",  "HS-PWM", "M2"),
+    ("M2HSB",  "B7",  "HS-PWM", "M2"),
+    ("M2HSC",  "B8",  "HS-PWM", "M2"),
+    ("M2LSA",  "A15", "LS-GPIO","M2"),
+    ("M2LSB",  "B3",  "LS-GPIO","M2"),
+    ("M2LSC",  "B5",  "LS-GPIO","M2"),
+    ("M2HA",   "A3",  "HALL",   "M2"),
+    ("M2HB",   "A4",  "HALL",   "M2"),
+    ("M2HC",   "A5",  "HALL",   "M2"),
+    # Motor 3
+    ("M3HSA",  "B4",  "HS-PWM", "M3"),
+    ("M3HSB",  "B0",  "HS-PWM", "M3"),
+    ("M3HSC",  "B1",  "HS-PWM", "M3"),
+    ("M3LSA",  "B9",  "LS-GPIO","M3"),
+    ("M3LSB",  "B11", "LS-GPIO","M3"),
+    ("M3LSC",  "B12", "LS-GPIO","M3"),
+    ("M3HA",   "A6",  "HALL",   "M3"),
+    ("M3HB",   "A7",  "HALL",   "M3"),
+    ("M3HC",   "B10", "HALL",   "M3"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -96,7 +142,6 @@ class MocoSerial:
             self.ser.write((cmd + "\n").encode())
 
     def send_byte(self, b: bytes):
-        """Send a raw byte (used for single-key TUI commands like Q)."""
         with self._lock:
             self.ser.write(b)
 
@@ -126,46 +171,20 @@ class MocoSerial:
 
 
 def enter_cmd_mode(moco_ser: MocoSerial):
-    """
-    Reliably switch the firmware from TUI mode to CMD mode.
-
-    The firmware boots into TUI mode (g_mode = MODE_TUI).  In TUI mode
-    the CMD dispatcher never runs - every received byte is passed as a
-    single keypress to tui_handle_key().  Sending the string "RAW\\n"
-    therefore fires R (set-reverse), A (next-phase-map), W (no-op), and
-    the newline as four separate TUI keys; the firmware never switches
-    mode and all subsequent commands are silently ignored.
-
-    The correct exit key from TUI is 'Q', which sets g_mode = MODE_CMD
-    and sends "INFO Entered CMD mode.\\r\\n".  After that the firmware is
-    in CMD mode and will respond to line-oriented commands normally.
-    """
-    # Drain any pending VT100 redraw traffic first.
     time.sleep(0.05)
     moco_ser.drain()
-
-    # Send 'Q' as a single byte - no newline, TUI key handler reads
-    # raw bytes one at a time.
     moco_ser.send_byte(b'Q')
-
-    # Wait up to 500 ms for the INFO confirmation banner.
     deadline = time.time() + 0.5
     while time.time() < deadline:
         for line in moco_ser.drain():
             if "CMD mode" in line or line.startswith("OK") or line.startswith("INFO"):
-                # Drain any remaining banner lines.
                 time.sleep(0.05)
                 moco_ser.drain()
                 return
         time.sleep(0.02)
-
-    # Fallback: if already in CMD mode (e.g. re-run without power cycle)
-    # PING will respond immediately.
     lines = moco_ser.send_and_wait("PING", timeout=0.3)
     if any("PONG" in l for l in lines):
         return
-
-    # Last resort: firmware may still be in TUI; try Q once more.
     moco_ser.send_byte(b'Q')
     time.sleep(0.2)
     moco_ser.drain()
@@ -195,8 +214,204 @@ class MotorState:
         self.perm_idx = (self.perm_idx + 5) % 6
         self.phase_map = list(PHASE_PERMS[self.perm_idx])
 
+
 # ---------------------------------------------------------------------------
-# Application
+# Pin Test Screen
+# ---------------------------------------------------------------------------
+class PinTestApp:
+    """
+    Standalone fullscreen pin tester.  Navigates PIN_CATALOGUE left/right.
+    For HS-PWM pins: sends PINTEST <name> <val> which tells firmware to stop
+    the timer channel, reconfigure the pin as GPIO push-pull, then drive it.
+    For LS-GPIO / HALL pins: falls back to SETPINRAW / READPIN commands.
+    """
+
+    def __init__(self, moco: MocoSerial):
+        self.moco    = moco
+        self.pins    = list(PIN_CATALOGUE)   # (name, mcu, type, group)
+        self.sel     = 0
+        # per-pin state: written_val (-1=unknown), idr (-1=unknown), mismatch
+        self.state   = [{
+            "written": -1, "idr": -1, "mismatch": False, "last_resp": ""
+        } for _ in self.pins]
+        self.status  = "Pin Test Mode.  STOP ALL before testing output pins!"
+
+    # -----------------------------------------------------------------------
+    def _send(self, cmd, timeout=1.0):
+        return self.moco.send_and_wait(cmd, timeout)
+
+    def _pintest(self, idx, val):
+        name = self.pins[idx][0]
+        ptype = self.pins[idx][2]
+        if ptype == "HALL":
+            # Read-only: just read IDR
+            lines = self._send(f"READPIN {name}")
+            resp = " | ".join(lines)
+            self.state[idx]["last_resp"] = resp
+            for l in lines:
+                if "=" in l:
+                    try:
+                        self.state[idx]["idr"] = int(l.split("=")[1].split()[0])
+                    except Exception:
+                        pass
+            self.status = f"{name}: {resp}"
+            return
+        # Output pin: use PINTEST command (firmware reconfigures as GPIO)
+        lines = self._send(f"PINTEST {name} {val}")
+        resp = " | ".join(lines)
+        self.state[idx]["last_resp"] = resp
+        self.state[idx]["written"] = val
+        # Parse ODR/IDR from response
+        for l in lines:
+            if "ODR=" in l and "IDR=" in l:
+                try:
+                    odr = int(l.split("ODR=")[1].split()[0])
+                    idr = int(l.split("IDR=")[1].split()[0])
+                    self.state[idx]["idr"] = idr
+                    self.state[idx]["mismatch"] = (odr != idr)
+                except Exception:
+                    pass
+            elif "ERR" in l:
+                self.status = f"{name}: {l}"
+                return
+        self.status = f"{name} -> {val}  {resp}"
+
+    def _read_pin(self, idx):
+        name = self.pins[idx][0]
+        lines = self._send(f"READPIN {name}")
+        resp = " | ".join(lines)
+        self.state[idx]["last_resp"] = resp
+        for l in lines:
+            if "=" in l:
+                # "OK M2HSA=0 (OUT)" style
+                try:
+                    part = l.split("=")[1].split()[0]
+                    self.state[idx]["idr"] = int(part)
+                except Exception:
+                    pass
+        self.status = f"{name} IDR: {resp}"
+
+    def _read_all(self):
+        """Read IDR of every pin via individual READPIN calls."""
+        for i, (name, mcu, ptype, grp) in enumerate(self.pins):
+            lines = self._send(f"READPIN {name}", timeout=0.5)
+            for l in lines:
+                if "=" in l:
+                    try:
+                        part = l.split("=")[1].split()[0]
+                        self.state[i]["idr"] = int(part)
+                    except Exception:
+                        pass
+        self.status = "All pins read."
+
+    # -----------------------------------------------------------------------
+    def draw(self, scr):
+        scr.erase()
+        H, W = scr.getmaxyx()
+
+        def safe(row, col, txt, attr=0):
+            try:
+                if row < H - 1:
+                    scr.addstr(row, col, txt[:W - col - 1], attr)
+                elif row == H - 1:
+                    scr.insstr(row, col, txt[:W - col - 2], attr)
+            except curses.error:
+                pass
+
+        safe(0, 0, "  MOCO PIN TESTER  ", curses.color_pair(3) | curses.A_BOLD)
+        safe(0, 20, "[Left/Right]navigate  [Space/H/L]drive  [R]read  [A]read all  [Q]back",
+             curses.color_pair(4))
+        safe(1, 0, "-" * min(W - 1, 90), curses.color_pair(6))
+
+        # Header
+        safe(2, 0,  f" {'#':>2}  {'Group':<5}  {'Name':<8}  {'Pin':<5}  {'Type':<8}  {'Written':>7}  {'IDR':>4}  {'Status'}",
+             curses.color_pair(6) | curses.A_BOLD)
+        safe(3, 0, "-" * min(W - 1, 90), curses.color_pair(6))
+
+        row = 4
+        last_grp = None
+        for i, (name, mcu, ptype, grp) in enumerate(self.pins):
+            if row >= H - 3:
+                break
+            st = self.state[i]
+            written_s = str(st["written"]) if st["written"] >= 0 else " -"
+            idr_s     = str(st["idr"])     if st["idr"]     >= 0 else " -"
+
+            # group separator
+            if grp != last_grp:
+                if row < H - 3:
+                    safe(row, 0, f" --- {grp} ---", curses.color_pair(4) | curses.A_BOLD)
+                    row += 1
+                last_grp = grp
+
+            # colour
+            if i == self.sel:
+                attr = curses.A_REVERSE | curses.A_BOLD
+            elif ptype == "HALL":
+                attr = curses.color_pair(3)
+            elif ptype == "LS-GPIO":
+                attr = curses.color_pair(2)
+            elif st["mismatch"]:
+                attr = curses.color_pair(1) | curses.A_BOLD
+            else:
+                attr = 0
+
+            mismatch_flag = "  [MISMATCH]" if st["mismatch"] else ""
+            resp_short    = st["last_resp"][:30] if st["last_resp"] else ""
+
+            line = (f" {i:>2}  {grp:<5}  {name:<8}  {mcu:<5}  {ptype:<8}"
+                    f"  {written_s:>7}  {idr_s:>4}  {resp_short}{mismatch_flag}")
+            safe(row, 0, line, attr)
+            row += 1
+
+        safe(H - 2, 0, "-" * min(W - 1, 90), curses.color_pair(6))
+        safe(H - 1, 0, f" {self.status}", curses.color_pair(4))
+        scr.refresh()
+
+    # -----------------------------------------------------------------------
+    def run(self, scr):
+        scr.nodelay(True)
+        scr.keypad(True)
+        self.status = "Pin Test Mode.  STOP ALL before testing output pins!"
+
+        while True:
+            self.draw(scr)
+            try:
+                key = scr.getch()
+            except Exception:
+                key = -1
+
+            if key == -1:
+                time.sleep(0.02)
+                continue
+
+            if key in (ord('q'), ord('Q'), 27):   # Q or Esc
+                break
+            elif key == curses.KEY_LEFT:
+                self.sel = (self.sel - 1) % len(self.pins)
+                self.status = f"Selected: {self.pins[self.sel][0]} ({self.pins[self.sel][1]})"
+            elif key == curses.KEY_RIGHT:
+                self.sel = (self.sel + 1) % len(self.pins)
+                self.status = f"Selected: {self.pins[self.sel][0]} ({self.pins[self.sel][1]})"
+            elif key == ord(' '):
+                # toggle
+                cur = self.state[self.sel]["written"]
+                nval = 0 if cur == 1 else 1
+                self._pintest(self.sel, nval)
+            elif key in (ord('h'), ord('H')):
+                self._pintest(self.sel, 1)
+            elif key in (ord('l'), ord('L')):
+                self._pintest(self.sel, 0)
+            elif key in (ord('r'), ord('R')):
+                self._read_pin(self.sel)
+            elif key in (ord('a'), ord('A')):
+                self.status = "Reading all pins..."
+                self.draw(scr)
+                self._read_all()
+
+
+# ---------------------------------------------------------------------------
+# Main Application
 # ---------------------------------------------------------------------------
 class MocoApp:
     def __init__(self, moco: MocoSerial):
@@ -208,14 +423,13 @@ class MocoApp:
         self.gpiob_odr      = 0; self.gpiob_idr = 0
         self._poll_lock     = threading.Lock()
         self._running       = True
-        self._hallmon_mode  = False   # True = fullscreen streaming mode
+        self._hallmon_mode  = False
+        self._pintest_mode  = False
+        self._pin_app       = PinTestApp(moco)
 
-        # Switch firmware to CMD mode before sending any line commands.
         enter_cmd_mode(moco)
         self._full_refresh()
 
-    # -----------------------------------------------------------------------
-    # Polling
     # -----------------------------------------------------------------------
     def _full_refresh(self):
         lines = self.moco.send_and_wait("STATUS", timeout=1.0)
@@ -227,28 +441,21 @@ class MocoApp:
         lines = self.moco.send_and_wait("ODRDUMP", timeout=0.5)
         for line in lines:
             self._parse_gpio(line)
-        # Load initial hall ring for selected motor
         self._fetch_hallseq(self.selected)
 
     def poll_once(self):
-        """Quick poll: hall state, ticks, GPIO, and full hall ring for selected motor."""
         with self._poll_lock:
             for line in self.moco.send_and_wait("HALL", timeout=0.3):
                 self._parse_hall(line)
             for line in self.moco.send_and_wait("TICKS", timeout=0.3):
                 self._parse_ticks(line)
-            lines = self.moco.send_and_wait("ODRDUMP", timeout=0.3)
-            for line in lines:
+            for line in self.moco.send_and_wait("ODRDUMP", timeout=0.3):
                 self._parse_gpio(line)
-            # Always fetch the full ring for the currently selected motor so
-            # the hallmon deque reflects every transition, not just snapshots.
             self._fetch_hallseq(self.selected)
 
     def _fetch_hallseq(self, motor_idx: int):
-        """Send HALLSEQ <motor> and populate hallmon from the full ring response."""
         lines = self.moco.send_and_wait(f"HALLSEQ {motor_idx + 1}", timeout=0.5)
         for line in lines:
-            # Response: INFO M1 HALLSEQ (736 transitions): 1 5 1 3 4 2 ...
             if "HALLSEQ" in line and ":" in line:
                 try:
                     payload = line.split(":", 1)[1].strip()
@@ -262,8 +469,6 @@ class MocoApp:
                     pass
 
     # -----------------------------------------------------------------------
-    # Response parsers
-    # -----------------------------------------------------------------------
     def _parse_status(self, line):
         if not line.startswith("INFO M"):
             return
@@ -275,12 +480,12 @@ class MocoApp:
             m = self.motors[idx]
             for p in parts[2:]:
                 k, _, v = p.partition("=")
-                if k == "en":           m.enabled        = v == "1"
-                elif k == "dir":        m.direction      = 0 if v == "FWD" else 1
-                elif k == "duty":       m.duty           = int(v)
-                elif k == "hall":       m.hall           = int(v, 16)
-                elif k == "ticks":      m.ticks          = int(v)
-                elif k == "offset":     m.commut_offset  = int(v)
+                if k == "en":       m.enabled        = v == "1"
+                elif k == "dir":    m.direction      = 0 if v == "FWD" else 1
+                elif k == "duty":   m.duty           = int(v)
+                elif k == "hall":   m.hall           = int(v, 16)
+                elif k == "ticks":  m.ticks          = int(v)
+                elif k == "offset": m.commut_offset  = int(v)
                 elif k == "map":
                     nums = v.strip("[]").split(",")
                     m.phase_map = [int(x) for x in nums]
@@ -335,8 +540,6 @@ class MocoApp:
         except Exception:
             pass
 
-    # -----------------------------------------------------------------------
-    # Actions
     # -----------------------------------------------------------------------
     def _cmd(self, cmd):
         lines = self.moco.send_and_wait(cmd, timeout=0.5)
@@ -404,19 +607,12 @@ class MocoApp:
             self.status_msg = "Ticks reset."
 
     def clear_hallmon(self):
-        """Clear the hall ring on the firmware AND locally."""
         self._cmd(f"CLEARRING {self.selected+1}")
         self.motors[self.selected].hallmon.clear()
         self.status_msg = "Hall ring cleared."
 
     # -----------------------------------------------------------------------
-    # Hall monitor streaming mode
-    # -----------------------------------------------------------------------
     def run_hallmonitor(self, scr):
-        """
-        Fullscreen streaming mode: sends HALLMONITOR <motor> to firmware,
-        prints every transition as it arrives.  Any key press exits.
-        """
         mid = self.selected + 1
         H, W = scr.getmaxyx()
         scr.erase()
@@ -424,21 +620,14 @@ class MocoApp:
                    curses.color_pair(3) | curses.A_BOLD)
         scr.addstr(1, 0, "-" * min(60, W - 1), curses.color_pair(6))
         scr.refresh()
-
-        row    = 2
-        total  = 0
-        # Drain any stale data
+        row = 2; total = 0
         self.moco.drain()
         self.moco.send(f"HALLMONITOR {mid}")
         scr.nodelay(True)
-
         while True:
-            # Check for keypress to exit
             key = scr.getch()
             if key != -1:
-                # Tell firmware to stop streaming
                 self.moco.send("")
-                # Drain until OK
                 deadline = time.time() + 1.0
                 while time.time() < deadline:
                     for line in self.moco.drain():
@@ -449,8 +638,6 @@ class MocoApp:
                         continue
                     break
                 break
-
-            # Drain incoming lines
             for line in self.moco.drain():
                 if line.startswith("INFO "):
                     payload = line[5:].strip()
@@ -462,24 +649,17 @@ class MocoApp:
                         if row < H - 1:
                             scr.addstr(row, 0, label[:W - 1], curses.color_pair(3))
                         else:
-                            # Scroll: move everything up
-                            scr.scroll()
-                            row = H - 2
+                            scr.scroll(); row = H - 2
                             scr.addstr(row, 0, label[:W - 1], curses.color_pair(3))
-                        scr.refresh()
-                        row += 1
+                        scr.refresh(); row += 1
                     except curses.error:
                         pass
                 elif line.startswith("OK") or line.startswith("ERR"):
                     break
-
             time.sleep(0.01)
-
         self.status_msg = f"Hallmonitor stopped after {total} transitions."
         self._hallmon_mode = False
 
-    # -----------------------------------------------------------------------
-    # Drawing
     # -----------------------------------------------------------------------
     def draw(self, scr):
         scr.erase()
@@ -499,13 +679,11 @@ class MocoApp:
             filled = int(val * width / maxv) if maxv else 0
             return "[" + "#" * filled + "-" * (width - filled) + "]"
 
-        # Title
         title = "  MOCO Motor Controller  "
-        hint  = "[Q]quit  [H]help"
+        hint  = "[Q]quit  [H]help  [P]pin test"
         safe_addstr(0, 0, title, curses.color_pair(3) | curses.A_BOLD)
         safe_addstr(0, len(title), hint, curses.color_pair(4))
 
-        # Tabs
         col = 0
         for i in range(MOTOR_COUNT):
             label = f" M{i+1} "
@@ -516,21 +694,18 @@ class MocoApp:
 
         safe_addstr(3, 0, "-" * min(50, W - 1), curses.color_pair(6))
 
-        # Enable
         en_str = "ENABLED " if m.enabled else "DISABLED"
         en_col = curses.color_pair(2) | curses.A_BOLD if m.enabled else curses.color_pair(1) | curses.A_BOLD
         safe_addstr(4, 0, " Status: ")
         safe_addstr(4, 9, en_str, en_col)
         safe_addstr(4, 18, "  [E]enable  [D]disable  [S]stop all", curses.color_pair(4))
 
-        # Direction
         dir_str = "FWD" if m.direction == 0 else "REV"
         dir_col = curses.color_pair(2) if m.direction == 0 else curses.color_pair(4)
         safe_addstr(5, 0, " Dir:    ")
         safe_addstr(5, 9, dir_str, dir_col | curses.A_BOLD)
         safe_addstr(5, 13, "  [F]forward  [R]reverse", curses.color_pair(4))
 
-        # Duty
         duty_bar = bar(m.duty, DUTY_MAX, 20)
         safe_addstr(6, 0, " Duty:   ")
         safe_addstr(6, 9, duty_bar, curses.color_pair(2))
@@ -538,7 +713,6 @@ class MocoApp:
             f"  {m.duty:4d}/{DUTY_MAX}  [Up/Dn]+/-10  [PgU/PgD]+/-100  [0]zero",
             curses.color_pair(4))
 
-        # Hall
         h = m.hall
         fault = h == 0 or h == 7
         hall_col = curses.color_pair(1) | curses.A_BOLD if fault else curses.color_pair(3) | curses.A_BOLD
@@ -547,7 +721,6 @@ class MocoApp:
         if fault:
             safe_addstr(7, 35, "  [FAULT - sensor dead?]", curses.color_pair(1) | curses.A_BOLD)
 
-        # Hall sequence - full ring from firmware, most recent HALLMON_LEN entries
         seq = list(m.hallmon)
         seq_str = " ".join(f"{v:X}" for v in seq)
         total_label = f"  ({m.ticks} ticks)"
@@ -556,25 +729,21 @@ class MocoApp:
         safe_addstr(8, 10 + len(seq_str) + 1,
             total_label + "  [C]clear  [M]monitor", curses.color_pair(4))
 
-        # Ticks
         safe_addstr(9, 0, " Ticks:  ")
         safe_addstr(9, 9, str(m.ticks), curses.color_pair(3) | curses.A_BOLD)
         safe_addstr(9, 9 + len(str(m.ticks)) + 1, "  [T]reset", curses.color_pair(4))
 
-        # Phase map
         pm = m.phase_map
         safe_addstr(10, 0,
             f" PhaseMap: [{pm[0]},{pm[1]},{pm[2]}]  perm {m.perm_idx+1}/6  "
             "[A]next  [Z]prev", curses.color_pair(4))
 
-        # Commutation offset  <-- NEW ROW
         safe_addstr(11, 0,
             f" CommutOff: {m.commut_offset}/5  [O]next  [I]prev",
             curses.color_pair(4))
 
         safe_addstr(12, 0, "-" * min(50, W - 1), curses.color_pair(6))
 
-        # All motors summary
         safe_addstr(13, 0, " All: ")
         col = 6
         for i, mi in enumerate(self.motors):
@@ -588,27 +757,21 @@ class MocoApp:
             safe_addstr(13, col, f"/{dir_c}/{mi.duty}/off{mi.commut_offset}  ")
             col += len(f"/{dir_c}/{mi.duty}/off{mi.commut_offset}  ")
 
-        # GPIO
         safe_addstr(14, 0,
             f" GPIO: PA ODR={self.gpioa_odr:04X} IDR={self.gpioa_idr:04X}  "
             f"PB ODR={self.gpiob_odr:04X} IDR={self.gpiob_idr:04X}",
             curses.color_pair(3))
 
         safe_addstr(15, 0, "-" * min(50, W - 1), curses.color_pair(6))
-
         safe_addstr(16, 0,
             " [1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10",
             curses.color_pair(6))
         safe_addstr(17, 0,
-            " [A/Z]phase map  [O/I]commut offset  [T]ticks  [C]hall  [M]monitor  [S]stop  [Q]quit",
+            " [A/Z]phase map  [O/I]commut offset  [T]ticks  [C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit",
             curses.color_pair(6))
-
         safe_addstr(18, 0, f" {self.status_msg}", curses.color_pair(4))
-
         scr.refresh()
 
-    # -----------------------------------------------------------------------
-    # Main loop
     # -----------------------------------------------------------------------
     def run(self, scr):
         curses.curs_set(0)
@@ -622,7 +785,6 @@ class MocoApp:
         curses.init_pair(6, curses.COLOR_WHITE,   -1)
         scr.nodelay(True)
         scr.keypad(True)
-        # Enable scrolling for hallmonitor mode
         scr.scrollok(True)
         scr.idlok(True)
 
@@ -632,10 +794,17 @@ class MocoApp:
         while self._running:
             if self._hallmon_mode:
                 self.run_hallmonitor(scr)
-                scr.nodelay(True)
-                scr.keypad(True)
-                scr.scrollok(True)
-                scr.idlok(True)
+                scr.nodelay(True); scr.keypad(True)
+                scr.scrollok(True); scr.idlok(True)
+                continue
+
+            if self._pintest_mode:
+                self._pin_app.run(scr)
+                self._pintest_mode = False
+                # re-arm curses state
+                scr.nodelay(True); scr.keypad(True)
+                scr.scrollok(True); scr.idlok(True)
+                self.status_msg = "Returned from pin test."
                 continue
 
             self.draw(scr)
@@ -660,7 +829,6 @@ class MocoApp:
             elif key in (ord('1'), ord('2'), ord('3')):
                 self.selected = key - ord('1')
                 self.status_msg = f"Motor {self.selected+1} selected."
-                # Fetch ring for newly selected motor immediately
                 threading.Thread(
                     target=self._fetch_hallseq, args=(self.selected,), daemon=True
                 ).start()
@@ -684,10 +852,12 @@ class MocoApp:
             elif key in (ord('c'), ord('C')): self.clear_hallmon()
             elif key in (ord('m'), ord('M')):
                 self._hallmon_mode = True
+            elif key in (ord('p'), ord('P')):
+                self._pintest_mode = True
             elif key in (ord('h'), ord('H')):
                 self.status_msg = (
                     "1/2/3 motor | E/D en/dis | F/R dir | Up/Dn duty | "
-                    "A/Z map | O/I offset | T ticks | C hall | M monitor | S stop | Q quit"
+                    "A/Z map | O/I offset | T ticks | C hall | M monitor | P pins | S stop | Q quit"
                 )
 
         self._running = False
@@ -696,8 +866,6 @@ class MocoApp:
 
 # ---------------------------------------------------------------------------
 # Raw interactive session (--raw flag)
-# Does NOT instantiate MocoApp - avoids the STATUS/HALL/ODRDUMP refresh
-# storm before the user gets a prompt.
 # ---------------------------------------------------------------------------
 def run_raw(moco_ser: MocoSerial):
     print("Switching firmware to CMD mode...", flush=True)
