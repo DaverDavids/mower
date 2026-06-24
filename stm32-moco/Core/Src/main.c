@@ -120,11 +120,8 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    /* Bug 1 fix: Motor_CommutateAll() removed from here.
-     * Commutation runs exclusively from SysTick ISR (stm32f1xx_it.c) every
-     * 1 ms.  Having it here AND in the ISR created a race: both contexts
-     * sampled hall state and wrote PWM independently, producing jitter,
-     * wrong commutation steps, and missed hall ring entries. */
+    /* Run 6-step commutation for all motors based on live Hall readings */
+    Motor_CommutateAll();
 
     /* Process any pending USB CDC commands from the Atomic Pi */
     USBCMD_Process();
