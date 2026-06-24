@@ -68,6 +68,14 @@ static const uint32_t TIM_CH[3] = {
     TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3
 };
 
+/*
+ * TIM1 CCER bit positions for each channel:
+ *   CH1E=bit0, CH1NE=bit2, CH2E=bit4, CH2NE=bit6, CH3E=bit8, CH3NE=bit10
+ * Indexed [ch][0]=CCxE, [ch][1]=CCxNE
+ */
+static const uint16_t CCER_E[3]  = { TIM_CCER_CC1E,  TIM_CCER_CC2E,  TIM_CCER_CC3E  };
+static const uint16_t CCER_NE[3] = { TIM_CCER_CC1NE, TIM_CCER_CC2NE, TIM_CCER_CC3NE };
+
 /* -------------------------------------------------------------------------
  * Motor hardware descriptors
  * -------------------------------------------------------------------------
@@ -128,6 +136,9 @@ static void all_off(uint8_t mid)
         }
     }
     if (hw->is_advanced) {
+        /* Bug 2 fix: clear all CCER enable bits before disabling MOE so no
+         * complementary output can invert to 1 while CCR=0. */
+        hw->htim->Instance->CCER = 0;
         __HAL_TIM_MOE_DISABLE(hw->htim);
     }
 }
@@ -160,15 +171,14 @@ void Motor_Init(void)
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
-            TIM_BreakDeadTimeConfigTypeDef bdtConfig = {0};
-            bdtConfig.OffStateRunMode   = TIM_OSSR_DISABLE;
-            bdtConfig.OffStateIDLEMode  = TIM_OSSI_DISABLE;
-            bdtConfig.LockLevel         = TIM_LOCKLEVEL_OFF;
-            bdtConfig.DeadTime          = TIM1_DEADTIME;
-            bdtConfig.BreakState        = TIM_BREAK_DISABLE;
-            bdtConfig.BreakPolarity     = TIM_BREAKPOLARITY_HIGH;
-            bdtConfig.AutomaticOutput   = TIM_AUTOMATICOUTPUT_ENABLE;
-            HAL_TIMEx_ConfigBreakDeadTime(MOTOR_HW[m].htim, &bdtConfig);
+
+            /* Bug 3 fix: do NOT call HAL_TIMEx_ConfigBreakDeadTime() here.
+             * MX_TIM1_Init() USER CODE already wrote the correct BDTR:
+             *   OSSR = ENABLE  (complementary pins → LOW when MOE off, not hi-Z)
+             *   OSSI = ENABLE  (same for idle state)
+             *   AutomaticOutput = DISABLE (MOE stays off after Motor_SafeAll())
+             * Calling it again here with wrong values was overwriting those
+             * safe settings, causing floating gates and an unstoppable Motor 1. */
         }
 
         all_off(m);
@@ -260,7 +270,8 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 
 /* -------------------------------------------------------------------------
  * 6-step commutation for one motor.
- * Call this frequently (main loop or timer interrupt).
+ * Called exclusively from SysTick ISR via Motor_CommutateAll() — never
+ * from the main loop — to avoid the ISR/main race (Bug 1).
  *
  * Hall ring capture happens HERE – every genuine transition is recorded
  * regardless of how fast the TUI redraws.  The ring holds 64 entries
@@ -309,11 +320,21 @@ void Motor_Commutate(uint8_t mid)
     uint8_t phys_high = ms->phase_map[step.high];
     uint8_t phys_low  = ms->phase_map[step.low];
 
+    /* Zero all CCRs first */
     for (uint8_t ch = 0; ch < 3; ch++) {
         __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[ch], 0);
         if (!hw->is_advanced && hw->ls_port[ch] != NULL) {
             HAL_GPIO_WritePin(hw->ls_port[ch], hw->ls_pin[ch], GPIO_PIN_RESET);
         }
+    }
+
+    if (hw->is_advanced) {
+        /* Bug 2 fix: set CCER so ONLY the active high-side (CCxE) and active
+         * low-side complementary (CCxNE) outputs are enabled.  All other CCxE
+         * and CCxNE bits must be 0.  Without this, zeroing CCR on an inactive
+         * channel with its CCxNE still set causes OCxN to invert to 1, turning
+         * that phase's low-side MOSFET fully ON and shoot-through occurs. */
+        hw->htim->Instance->CCER = (uint16_t)(CCER_E[phys_high] | CCER_NE[phys_low]);
     }
 
     __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], ms->duty);
