@@ -87,8 +87,8 @@ typedef struct {
     const char   *name;
     GPIO_TypeDef *port;
     uint16_t      pin;
-    uint8_t       output;
-    uint8_t       pwm_only;
+    uint8_t       output;    /* 0 = input only */
+    uint8_t       pwm_only;  /* 1 = normally AF-PWM, needs PINTEST to drive */
 } PinEntry_t;
 
 static const PinEntry_t pin_table[] = {
@@ -134,6 +134,73 @@ static uint8_t pin_bit(uint16_t mask)
     uint8_t b = 0;
     while (b < 16 && !((mask >> b) & 1U)) b++;
     return b;
+}
+
+/* -------------------------------------------------------------------------
+ * PINTEST helpers
+ *
+ * pintest_reconfigure_gpio() stops the timer channel that owns a PWM pin
+ * and reconfigures it as a plain GPIO push-pull output so we can bit-bang
+ * it for wiring continuity testing.
+ *
+ * After calling this the motor CANNOT commutate on that pin until the
+ * firmware is rebooted or Motor_Init() is called again.
+ * -------------------------------------------------------------------------
+ */
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
+
+typedef struct {
+    const char          *name;
+    TIM_HandleTypeDef   *htim;
+    uint32_t             channel;   /* TIM_CHANNEL_x */
+    uint8_t              complementary; /* 1 = OCxN (TIM1 low side) */
+} PwmChannelEntry_t;
+
+static const PwmChannelEntry_t pwm_channel_table[] = {
+    /* Motor 1 high side - TIM1 CH1/2/3 */
+    { "M1HSA", &htim1, TIM_CHANNEL_1, 0 },
+    { "M1HSB", &htim1, TIM_CHANNEL_2, 0 },
+    { "M1HSC", &htim1, TIM_CHANNEL_3, 0 },
+    /* Motor 1 low side - TIM1 CH1N/2N/3N (complementary) */
+    { "M1LSA", &htim1, TIM_CHANNEL_1, 1 },
+    { "M1LSB", &htim1, TIM_CHANNEL_2, 1 },
+    { "M1LSC", &htim1, TIM_CHANNEL_3, 1 },
+    /* Motor 2 high side - TIM4 CH1/2/3 */
+    { "M2HSA", &htim4, TIM_CHANNEL_1, 0 },
+    { "M2HSB", &htim4, TIM_CHANNEL_2, 0 },
+    { "M2HSC", &htim4, TIM_CHANNEL_3, 0 },
+    /* Motor 3 high side - TIM3 CH1/3/4 */
+    { "M3HSA", &htim3, TIM_CHANNEL_1, 0 },
+    { "M3HSB", &htim3, TIM_CHANNEL_3, 0 },
+    { "M3HSC", &htim3, TIM_CHANNEL_4, 0 },
+};
+#define PWM_CHANNEL_TABLE_SIZE (sizeof(pwm_channel_table)/sizeof(pwm_channel_table[0]))
+
+static void pintest_stop_pwm_channel(const char *name)
+{
+    for (uint32_t i = 0; i < PWM_CHANNEL_TABLE_SIZE; i++) {
+        if (strcmp(pwm_channel_table[i].name, name) == 0) {
+            if (pwm_channel_table[i].complementary)
+                HAL_TIMEx_PWMN_Stop(pwm_channel_table[i].htim,
+                                    pwm_channel_table[i].channel);
+            else
+                HAL_TIM_PWM_Stop(pwm_channel_table[i].htim,
+                                 pwm_channel_table[i].channel);
+            return;
+        }
+    }
+}
+
+static void pintest_reconfigure_gpio(const PinEntry_t *p)
+{
+    GPIO_InitTypeDef cfg = {0};
+    cfg.Pin   = p->pin;
+    cfg.Mode  = GPIO_MODE_OUTPUT_PP;
+    cfg.Speed = GPIO_SPEED_FREQ_HIGH;
+    cfg.Pull  = GPIO_NOPULL;
+    HAL_GPIO_Init(p->port, &cfg);
 }
 
 /* -------------------------------------------------------------------------
@@ -844,6 +911,69 @@ static void dispatch(char *line)
         snprintf(tx_scratch,sizeof(tx_scratch),"OK M%d COMMUTOFFSET=%d\r\n",mid+1,off);
         USBCMD_Send(tx_scratch);
 
+    } else if (strcmp(tok, "PINTEST") == 0) {
+        /* PINTEST <name> <0|1>
+         * Stops all motors, reconfigures the named pin as GPIO push-pull
+         * (stopping its timer channel if it is a PWM pin), drives it to
+         * the requested level, then reads back IDR.
+         * NOTE: after PINTEST the affected timer channel is STOPPED.
+         * Reboot or re-call Motor_Init() to restore PWM. */
+        char *sn=strtok(NULL," \t"),*sv=strtok(NULL," \t");
+        if(!sn||!sv){USBCMD_Send("ERR USAGE: PINTEST <name> <0|1>\r\n");return;}
+        int val=atoi(sv);
+        if(val!=0&&val!=1){USBCMD_Send("ERR val must be 0 or 1\r\n");return;}
+        const PinEntry_t *p=find_pin(sn);
+        if(!p){
+            snprintf(tx_scratch,sizeof(tx_scratch),"ERR UNKNOWN_PIN: %s\r\n",sn);
+            USBCMD_Send(tx_scratch); return;
+        }
+        if(!p->output){
+            /* Hall input: just read, don't drive */
+            int level=(HAL_GPIO_ReadPin(p->port,p->pin)==GPIO_PIN_SET)?1:0;
+            snprintf(tx_scratch,sizeof(tx_scratch),
+                "OK %s IDR=%d (INPUT - not driven)\r\n",p->name,level);
+            USBCMD_Send(tx_scratch); return;
+        }
+        /* Stop all motors first - safety */
+        Motor_SafeAll();
+        HAL_Delay(1);
+        /* If PWM pin: stop the timer channel and reconfigure as GPIO */
+        if(p->pwm_only){
+            pintest_stop_pwm_channel(p->name);
+            pintest_reconfigure_gpio(p);
+        }
+        /* Drive the pin */
+        HAL_GPIO_WritePin(p->port, p->pin,
+            val ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        HAL_Delay(1);  /* settle */
+        uint8_t bit=pin_bit(p->pin);
+        uint32_t odr=(p->port->ODR>>bit)&1;
+        uint32_t idr=(p->port->IDR>>bit)&1;
+        snprintf(tx_scratch,sizeof(tx_scratch),
+            "OK %s bit=%u wrote=%d ODR=%lu IDR=%lu%s\r\n",
+            p->name, bit, val, odr, idr,
+            (odr!=idr) ? " MISMATCH" : "");
+        USBCMD_Send(tx_scratch);
+
+    } else if (strcmp(tok, "PINTESTALL") == 0) {
+        /* PINTESTALL - read IDR of every pin without driving anything.
+         * Useful for a snapshot of all pin states including PWM pins
+         * (reads whatever the AF output is). */
+        USBCMD_Send("INFO --- PINTESTALL IDR snapshot ---\r\n");
+        for(uint32_t i=0;i<PIN_TABLE_SIZE;i++){
+            const PinEntry_t *pp=&pin_table[i];
+            uint8_t bit=pin_bit(pp->pin);
+            uint32_t odr=(pp->port->ODR>>bit)&1;
+            uint32_t idr=(pp->port->IDR>>bit)&1;
+            const char *type_s=!pp->output?"IN":(pp->pwm_only?"PWM":"GPIO");
+            snprintf(tx_scratch,sizeof(tx_scratch),
+                "INFO %s %s ODR=%lu IDR=%lu%s\r\n",
+                pp->name, type_s, odr, idr,
+                (pp->output&&odr!=idr)?" MISMATCH":"");
+            USBCMD_Send(tx_scratch);
+        }
+        USBCMD_Send("OK PINTESTALL\r\n");
+
     } else if (strcmp(tok, "SETPIN") == 0) {
         char *s_name=strtok(NULL," \t"),*s_val=strtok(NULL," \t");
         if(!s_name||!s_val){USBCMD_Send("ERR USAGE: SETPIN <name> <0|1>\r\n");return;}
@@ -852,7 +982,7 @@ static void dispatch(char *line)
         const PinEntry_t *p=find_pin(s_name);
         if(!p){snprintf(tx_scratch,sizeof(tx_scratch),"ERR UNKNOWN_PIN: %s\r\n",s_name);USBCMD_Send(tx_scratch);return;}
         if(!p->output){snprintf(tx_scratch,sizeof(tx_scratch),"ERR PIN_IS_INPUT: %s\r\n",s_name);USBCMD_Send(tx_scratch);return;}
-        if(p->pwm_only){snprintf(tx_scratch,sizeof(tx_scratch),"ERR PIN_IS_PWM: %s\r\n",s_name);USBCMD_Send(tx_scratch);return;}
+        if(p->pwm_only){snprintf(tx_scratch,sizeof(tx_scratch),"ERR PIN_IS_PWM (use PINTEST): %s\r\n",s_name);USBCMD_Send(tx_scratch);return;}
         HAL_GPIO_WritePin(p->port,p->pin,val?GPIO_PIN_SET:GPIO_PIN_RESET);
         snprintf(tx_scratch,sizeof(tx_scratch),"OK %s=%d\r\n",s_name,val);
         USBCMD_Send(tx_scratch);
@@ -983,6 +1113,9 @@ static void dispatch(char *line)
     } else if (strcmp(tok, "HELP") == 0) {
         USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET\r\n");
         USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
+        USBCMD_Send("INFO Test:  PINTEST <name> <0|1>  PINTESTALL\r\n");
+        USBCMD_Send("INFO         PINTEST stops motors, releases timer channel, drives pin as GPIO\r\n");
+        USBCMD_Send("INFO         PINTESTALL reads IDR of all pins without driving anything\r\n");
         USBCMD_Send("INFO Mode:  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
         USBCMD_Send("OK HELP\r\n");
 
