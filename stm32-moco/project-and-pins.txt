@@ -111,3 +111,36 @@ code, make the following changes in STM32CubeMX:
     This remap also moves TIM3_CH2 to PB5 – but PB5 is M2LSC (GPIO output).
     To avoid conflict, Motor 3 only uses CH1(B4), CH3(B0), CH4(B1);
     CH2 is intentionally unused.
+
+
+------------------------------
+## Architecture & Key Invariants (read this before touching any file)
+
+  Files:
+    motor_ctrl.c / motor_ctrl.h  – All commutation, hall reading, ring buffer
+    usb_cmd.c                    – USB CDC command parser and all debug monitors
+    main.c                       – main loop calls Motor_CommutateAll(), SysTick ISR also calls it (KNOWN BUG – must only call from one place)
+
+  Commutation model:
+    Motor 1 (TIM1, advanced): high-side = CCR duty, low-side = complementary OCxN.
+      CCER must be explicitly managed per step – zeroing CCR does NOT disable OCxN.
+      Only the active high channel (OCx) and active low channel (OCxN) should have CCER bits set; all others must be cleared each step.
+    Motor 2/3 (TIM4/TIM3, general-purpose): high-side = CCR duty, low-side = GPIO enable.
+      No complementary outputs. GPIO low-side driven directly.
+
+  BDTR (TIM1 only) required settings:
+    OSSR = ENABLE   (pin drives LOW when channel disabled, not hi-Z)
+    OSSI = ENABLE   (same for IDLE state)
+    AutomaticOutput = DISABLE  (prevents hardware from re-enabling MOE after Motor_SafeAll())
+    Current Motor_Init() sets all three wrong – see known bugs.
+
+  Hall ring buffer (HallRing_t):
+    64-entry circular buffer in each MotorState_t.
+    Written by Motor_Commutate() on every genuine hall transition (dedup by last state, invalid states 0 and 7 skipped).
+    Read/drained by HALLMONITOR command in usb_cmd.c.
+    Motor_ClearHallRing() also resets hall_state to 0 so first transition after clear is always captured.
+
+  Known bugs (unfixed as of 2026-06-24):
+    1. Motor_CommutateAll() called from both SysTick ISR and main() while loop → race on hall_state / new_hall → jitter and missed steps.
+    2. TIM1 CCER not cleared for inactive phases → two low-side MOSFETs ON simultaneously → short through motor windings.
+    3. Motor_Init() BDTR: OSSR/OSSI=DISABLE, AutomaticOutput=ENABLE → Motor_SafeAll() cannot reliably stop Motor 1.
