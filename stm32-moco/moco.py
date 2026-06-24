@@ -10,7 +10,9 @@ Usage:    python moco.py [PORT]          e.g.  python moco.py COM5
                                                python moco.py /dev/ttyACM0
           If PORT is omitted the script auto-detects the first USB CDC device.
 
-Key bindings:
+          python moco.py [PORT] --raw     raw line-at-a-time CMD mode
+
+Key bindings (TUI mode):
   1/2/3          select motor
   E / D          enable / disable selected motor
   F / R          forward / reverse
@@ -92,6 +94,11 @@ class MocoSerial:
         with self._lock:
             self.ser.write((cmd + "\n").encode())
 
+    def send_byte(self, b: bytes):
+        """Send a raw byte (used for single-key TUI commands like Q)."""
+        with self._lock:
+            self.ser.write(b)
+
     def drain(self):
         lines = []
         while self._response_queue:
@@ -115,6 +122,53 @@ class MocoSerial:
 
     def close(self):
         self.ser.close()
+
+
+def enter_cmd_mode(moco_ser: MocoSerial):
+    """
+    Reliably switch the firmware from TUI mode to CMD mode.
+
+    The firmware boots into TUI mode (g_mode = MODE_TUI).  In TUI mode
+    the CMD dispatcher never runs - every received byte is passed as a
+    single keypress to tui_handle_key().  Sending the string "RAW\n"
+    therefore fires R (set-reverse), A (next-phase-map), W (no-op), and
+    the newline as four separate TUI keys; the firmware never switches
+    mode and all subsequent commands are silently ignored.
+
+    The correct exit key from TUI is 'Q', which sets g_mode = MODE_CMD
+    and sends "INFO Entered CMD mode.\r\n".  After that the firmware is
+    in CMD mode and will respond to line-oriented commands normally.
+    """
+    # Drain any pending VT100 redraw traffic first.
+    time.sleep(0.05)
+    moco_ser.drain()
+
+    # Send 'Q' as a single byte - no newline, TUI key handler reads
+    # raw bytes one at a time.
+    moco_ser.send_byte(b'Q')
+
+    # Wait up to 500 ms for the INFO confirmation banner.
+    deadline = time.time() + 0.5
+    while time.time() < deadline:
+        for line in moco_ser.drain():
+            if "CMD mode" in line or line.startswith("OK") or line.startswith("INFO"):
+                # Drain any remaining banner lines.
+                time.sleep(0.05)
+                moco_ser.drain()
+                return
+        time.sleep(0.02)
+
+    # Fallback: if already in CMD mode (e.g. re-run without power cycle)
+    # PING will respond immediately.
+    lines = moco_ser.send_and_wait("PING", timeout=0.3)
+    if any("PONG" in l for l in lines):
+        return
+
+    # Last resort: firmware may still be in TUI; try Q once more.
+    moco_ser.send_byte(b'Q')
+    time.sleep(0.2)
+    moco_ser.drain()
+
 
 # ---------------------------------------------------------------------------
 # Motor state (local mirror)
@@ -154,9 +208,8 @@ class MocoApp:
         self._running       = True
         self._hallmon_mode  = False   # True = fullscreen streaming mode
 
-        self.moco.send("RAW")
-        time.sleep(0.1)
-        self.moco.drain()
+        # Switch firmware to CMD mode before sending any line commands.
+        enter_cmd_mode(moco)
         self._full_refresh()
 
     # -----------------------------------------------------------------------
@@ -477,7 +530,7 @@ class MocoApp:
         if fault:
             safe_addstr(7, 35, "  [FAULT - sensor dead?]", curses.color_pair(1) | curses.A_BOLD)
 
-        # Hall sequence — full ring from firmware, most recent HALLMON_LEN entries
+        # Hall sequence - full ring from firmware, most recent HALLMON_LEN entries
         seq = list(m.hallmon)
         seq_str = " ".join(f"{v:X}" for v in seq)
         total_label = f"  ({m.ticks} ticks)"
@@ -618,10 +671,35 @@ class MocoApp:
 
 
 # ---------------------------------------------------------------------------
+# Raw interactive session (--raw flag)
+# Does NOT instantiate MocoApp - avoids the STATUS/HALL/ODRDUMP refresh
+# storm before the user gets a prompt.
+# ---------------------------------------------------------------------------
+def run_raw(moco_ser: MocoSerial):
+    print("Switching firmware to CMD mode...", flush=True)
+    enter_cmd_mode(moco_ser)
+    print("Entering RAW command mode. Type commands, Ctrl-C to exit.")
+    try:
+        while True:
+            cmd = input("> ").strip()
+            if not cmd:
+                continue
+            lines = moco_ser.send_and_wait(cmd)
+            for line in lines:
+                print(line)
+    except KeyboardInterrupt:
+        print("\nExiting RAW mode.")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    port = sys.argv[1] if len(sys.argv) > 1 else None
+    port = None
+    raw_mode = "--raw" in sys.argv
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if args:
+        port = args[0]
     if port is None:
         port = find_port()
     if port is None:
@@ -635,21 +713,10 @@ def main():
         print(f"ERROR: {e}")
         sys.exit(1)
 
-    app = MocoApp(moco_ser)
-
-    if "--raw" in sys.argv:
-        print("Entering RAW command mode. Type commands, Ctrl-C to exit.")
-        try:
-            while True:
-                cmd = input("> ").strip()
-                if not cmd:
-                    continue
-                lines = moco_ser.send_and_wait(cmd)
-                for line in lines:
-                    print(line)
-        except KeyboardInterrupt:
-            print("\nExiting RAW mode.")
+    if raw_mode:
+        run_raw(moco_ser)
     else:
+        app = MocoApp(moco_ser)
         try:
             curses.wrapper(app.run)
         except KeyboardInterrupt:
