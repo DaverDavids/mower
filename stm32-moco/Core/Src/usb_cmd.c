@@ -7,7 +7,7 @@
  *             control, auto-refresh every ~100 ms.  Exit with Q.
  *
  *   CMD mode  - classic ASCII line protocol for scripting / the Python
- *             controller.  Enter with the RAW command, or Q from TUI.
+ *             controller.  Enter with Q from TUI (single keypress).
  *             Every response is prefixed OK / ERR / INFO so the host
  *             can parse it reliably.
  *
@@ -58,21 +58,19 @@ typedef enum { MODE_TUI = 0, MODE_CMD } AppMode_t;
 static AppMode_t g_mode = MODE_TUI;
 
 /* TUI state */
-static uint8_t  tui_selected_motor = 0;   /* 0-based */
+static uint8_t  tui_selected_motor = 0;
 static uint8_t  tui_needs_full_redraw = 1;
 static uint32_t tui_last_refresh_ms = 0;
 #define TUI_REFRESH_MS  100U
 
-/* Rate-limit for arrow-key duty changes: minimum ms between increments */
 #define DUTY_KEY_RATE_MS  80U
 static uint32_t tui_last_duty_key_ms = 0;
 
-/* Escape-sequence parser for arrow / function keys */
 typedef enum { ESC_IDLE, ESC_GOT_ESC, ESC_GOT_BRACKET } EscState_t;
 static EscState_t esc_state = ESC_IDLE;
 
 /* -------------------------------------------------------------------------
- * RX flush helper - discard all pending bytes in the ring buffer.
+ * RX flush helper
  * -------------------------------------------------------------------------
  */
 static void rx_flush(void)
@@ -179,16 +177,17 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
  *  Row 6    Direction + key
  *  Row 7    Duty bar + up/down keys
  *  Row 8    Hall state (live)
- *  Row 9    Hall sequence log  (last TUI_HALLSEQ_SHOW transitions)
+ *  Row 9    Hall sequence log
  *  Row 10   CommStep debug
  *  Row 11   Phase map + swap keys
- *  Row 12   -------------------------------------------------------
- *  Row 13   All-motors summary (compact)
- *  Row 14   GPIOB ODR/IDR raw
- *  Row 15   Blank
- *  Row 16   Key help line 1
- *  Row 17   Key help line 2
- *  Row 18   Status / last action
+ *  Row 12   Commut offset
+ *  Row 13   -------------------------------------------------------
+ *  Row 14   All-motors summary (compact)
+ *  Row 15   GPIOB ODR/IDR raw
+ *  Row 16   Blank
+ *  Row 17   Key help line 1
+ *  Row 18   Key help line 2
+ *  Row 19   Status / last action
  */
 
 #define TUI_ROW_TITLE    1
@@ -201,14 +200,14 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
 #define TUI_ROW_HALLMON  9
 #define TUI_ROW_TICKS   10
 #define TUI_ROW_MAP     11
-#define TUI_ROW_SEP2    12
-#define TUI_ROW_SUMMARY 13
-#define TUI_ROW_GPIO    14
-#define TUI_ROW_HELP1   16
-#define TUI_ROW_HELP2   17
-#define TUI_ROW_STATUS  18
+#define TUI_ROW_OFFSET  12
+#define TUI_ROW_SEP2    13
+#define TUI_ROW_SUMMARY 14
+#define TUI_ROW_GPIO    15
+#define TUI_ROW_HELP1   17
+#define TUI_ROW_HELP2   18
+#define TUI_ROW_STATUS  19
 
-/* How many ring entries to show in the TUI hall-seq row */
 #define TUI_HALLSEQ_SHOW  20U
 
 static void tui_goto(uint8_t row, uint8_t col)
@@ -301,24 +300,15 @@ static void tui_draw_motor_panel(void)
         (h == 0 || h == 7) ? "\x1b[1;31m[FAULT]\x1b[0m" : "");
     send_raw(tx_scratch);
 
-    /* Hall sequence - always show the last TUI_HALLSEQ_SHOW entries from
-     * the ring so the row is live on every redraw.
-     *
-     * We do NOT use a persistent read cursor here.  A cursor that advances
-     * each frame races to head==cursor in a single redraw (one frame can
-     * consume all available entries) and then shows nothing forever after.
-     * Instead, every frame we simply display the most-recent entries
-     * relative to the current head - the display scrolls naturally as the
-     * wheel turns and new transitions push the window forward. */
+    /* Hall sequence ring */
     tui_goto(TUI_ROW_HALLMON, 1); tui_erase_line();
     send_raw(" HallSeq:");
     {
         HallRing_t *r = &ms->hall_ring;
-        uint32_t head  = r->head;   /* snapshot */
+        uint32_t head  = r->head;
         uint32_t count = (head < HALL_RING_LEN) ? head : HALL_RING_LEN;
         uint32_t show  = (count < TUI_HALLSEQ_SHOW) ? count : TUI_HALLSEQ_SHOW;
-        uint32_t start = head - show;   /* index of oldest entry to display */
-
+        uint32_t start = head - show;
         if (show == 0U) {
             send_raw(" \x1b[2;36m--\x1b[0m");
         } else {
@@ -328,12 +318,18 @@ static void tui_draw_motor_panel(void)
                 send_raw(tx_scratch);
             }
         }
-
         snprintf(tx_scratch, sizeof(tx_scratch),
             "  \x1b[2m(%lu total)\x1b[0m  \x1b[33m[C]\x1b[0mclear",
             (unsigned long)head);
         send_raw(tx_scratch);
     }
+
+    /* CommStep */
+    tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
+    snprintf(tx_scratch, sizeof(tx_scratch),
+        " CommStep:%u  \x1b[33m[T]\x1b[0mreset ticks",
+        ms->commut_step);
+    send_raw(tx_scratch);
 
     /* Phase map */
     tui_goto(TUI_ROW_MAP, 1); tui_erase_line();
@@ -343,15 +339,15 @@ static void tui_draw_motor_panel(void)
         ms->phase_map[0], ms->phase_map[1], ms->phase_map[2]);
     send_raw(tx_scratch);
 
-    /* CommStep debug row */
-    tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
+    /* Commutation offset */
+    tui_goto(TUI_ROW_OFFSET, 1); tui_erase_line();
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " CommStep:%u  \x1b[33m[T]\x1b[0mreset ticks",
-        ms->commut_step);
+        " CommOff: \x1b[1;33m%u\x1b[0m/5  "
+        "\x1b[33m[O]\x1b[0mnext offset  \x1b[33m[I]\x1b[0mprev offset",
+        ms->commut_offset);
     send_raw(tx_scratch);
 }
 
-/* The 6 valid phase permutations */
 static const uint8_t phase_perms[6][3] = {
     {0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}
 };
@@ -376,11 +372,12 @@ static void tui_draw_summary(void)
     for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
         MotorState_t *ms = &g_motor[m];
         snprintf(tx_scratch, sizeof(tx_scratch),
-            "M%u:%s/%s/%u  ",
+            "M%u:%s/%s/%u/off%u  ",
             m+1,
             ms->enabled ? "\x1b[32mEN\x1b[0m" : "\x1b[31mDIS\x1b[0m",
             ms->dir == DIR_FORWARD ? "F" : "R",
-            ms->duty);
+            ms->duty,
+            ms->commut_offset);
         send_raw(tx_scratch);
     }
 }
@@ -405,9 +402,10 @@ static void tui_draw_help(void)
              "\x1b[33m[PgU/PgD]\x1b[0mduty x10");
     tui_goto(TUI_ROW_HELP2, 1); tui_erase_line();
     send_raw(" \x1b[33m[A/Z]\x1b[0mphase map  "
+             "\x1b[33m[O/I]\x1b[0mcommut offset  "
              "\x1b[33m[T]\x1b[0mreset ticks  "
-             "\x1b[33m[C]\x1b[0mclear hall seq  "
-             "\x1b[33m[S]\x1b[0mstop all  "
+             "\x1b[33m[C]\x1b[0mclear hall  "
+             "\x1b[33m[S]\x1b[0mstop  "
              "\x1b[33m[Q]\x1b[0mexit");
 }
 
@@ -548,6 +546,23 @@ static void tui_handle_key(uint8_t key)
             current_perm_idx[m]+1);
         break;
 
+    case 'o': case 'O':
+    {
+        uint8_t off = (ms->commut_offset + 1) % 6;
+        Motor_SetCommutOffset(m, off);
+        snprintf(tui_status_msg, sizeof(tui_status_msg),
+            "CommutOffset -> %u/5", off);
+        break;
+    }
+    case 'i': case 'I':
+    {
+        uint8_t off = (ms->commut_offset + 5) % 6;
+        Motor_SetCommutOffset(m, off);
+        snprintf(tui_status_msg, sizeof(tui_status_msg),
+            "CommutOffset -> %u/5", off);
+        break;
+    }
+
     case 't': case 'T':
         Motor_ResetTicks(m);
         tui_set_status("Ticks reset.");
@@ -614,8 +629,6 @@ static void tui_handle_escape_final(uint8_t final_byte)
  */
 static void TUI_Process(void)
 {
-    /* One keypress per loop iteration - prevents arrow-key backlog from
-     * monopolising CPU and blocking safety keys */
     if (rx_tail != rx_head) {
         uint8_t c = rx_buf[rx_tail];
         rx_tail = (rx_tail + 1U) % RX_BUF_SIZE;
@@ -632,7 +645,6 @@ static void TUI_Process(void)
         }
     }
 
-    /* Periodic redraw */
     uint32_t now = HAL_GetTick();
     if (now - tui_last_refresh_ms >= TUI_REFRESH_MS) {
         tui_last_refresh_ms = now;
@@ -708,9 +720,9 @@ static void dispatch(char *line)
         for(uint8_t m=0;m<MOTOR_COUNT;m++){
             MotorState_t *ms=&g_motor[m];
             snprintf(tx_scratch,sizeof(tx_scratch),
-                "INFO M%d: en=%d dir=%s duty=%u hall=0x%X step=%u ticks=%ld map=[%d,%d,%d]\r\n",
+                "INFO M%d: en=%d dir=%s duty=%u hall=0x%X step=%u offset=%u ticks=%ld map=[%d,%d,%d]\r\n",
                 m+1,ms->enabled,ms->dir==DIR_FORWARD?"FWD":"REV",ms->duty,
-                ms->hall_state,ms->commut_step,(long)ms->hall_ticks,
+                ms->hall_state,ms->commut_step,ms->commut_offset,(long)ms->hall_ticks,
                 ms->phase_map[0],ms->phase_map[1],ms->phase_map[2]);
             USBCMD_Send(tx_scratch);
         }
@@ -767,10 +779,6 @@ static void dispatch(char *line)
         USBCMD_Send("INFO HALLMONITOR running - send any key to stop\r\n");
         uint32_t last_head=g_motor[mid].hall_ring.head;
         while(rx_tail==rx_head){
-            /* Keep commutation running so the hall ring receives new entries
-             * while this blocking loop is active.  Without this call the main
-             * loop is frozen and Motor_Commutate() never fires, so hall_ring.head
-             * never advances and no transitions are ever reported. */
             Motor_CommutateAll();
             HallRing_t *r=&g_motor[mid].hall_ring;
             uint32_t cur_head=r->head;
@@ -825,6 +833,15 @@ static void dispatch(char *line)
         MotorState_t *ms=&g_motor[mid];
         snprintf(tx_scratch,sizeof(tx_scratch),"OK M%d MAP=[%d,%d,%d]\r\n",mid+1,
             ms->phase_map[0],ms->phase_map[1],ms->phase_map[2]);
+        USBCMD_Send(tx_scratch);
+
+    } else if (strcmp(tok, "COMMUTOFFSET") == 0) {
+        char *s_mid=strtok(NULL," \t"),*s_off=strtok(NULL," \t");
+        if(!s_mid||!s_off){USBCMD_Send("ERR USAGE: COMMUTOFFSET <motor 1-3> <0-5>\r\n");return;}
+        int mid=atoi(s_mid)-1,off=atoi(s_off);
+        if(mid<0||mid>=MOTOR_COUNT||off<0||off>5){USBCMD_Send("ERR INVALID_ARG\r\n");return;}
+        Motor_SetCommutOffset((uint8_t)mid,(uint8_t)off);
+        snprintf(tx_scratch,sizeof(tx_scratch),"OK M%d COMMUTOFFSET=%d\r\n",mid+1,off);
         USBCMD_Send(tx_scratch);
 
     } else if (strcmp(tok, "SETPIN") == 0) {
@@ -964,7 +981,7 @@ static void dispatch(char *line)
         USBCMD_Send("OK already in CMD mode\r\n");
 
     } else if (strcmp(tok, "HELP") == 0) {
-        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP\r\n");
+        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET\r\n");
         USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
         USBCMD_Send("INFO Mode:  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
         USBCMD_Send("OK HELP\r\n");

@@ -12,6 +12,17 @@
  *   Entry = {high_ch, low_ch}  (channel index 0-2 → CH1/CH2/CH3).
  *   Invalid states 0b000 and 0b111 map to STOP (step 255).
  *
+ * Commutation offset:
+ *   commut_offset (0-5) rotates the lookup table by N steps relative
+ *   to the hall state.  Use Motor_SetCommutOffset() / COMMUTOFFSET cmd
+ *   to find the correct alignment for a given motor without reflashing.
+ *   The canonical forward sequence for the valid hall states is:
+ *     index: 0  1  2  3  4  5
+ *     hall:  1  3  2  6  4  5
+ *   offset=0 means hall state drives its own table row (default).
+ *   offset=1 means each hall state drives the pattern that would
+ *   normally belong to the *next* state in the forward sequence, etc.
+ *
  * Pin assignments (source of truth: project-and-pins.txt):
  *   Motor 1 – TIM1: HS=A8/A9/A10, LS=B13/B14/B15 (complementary)
  *   Motor 2 – TIM4: HS=B6/B7/B8,  LS enables=A15/B3/B5 (GPIO)
@@ -63,6 +74,14 @@ static const CommutStep_t COMMUT_REV[8] = {
     {0xFF, 0xFF},  /* 0b111 – invalid           */
 };
 
+/*
+ * Canonical forward hall-state order (the 6 valid states in sequence).
+ * Used by Motor_Commutate to apply commut_offset: we find the position
+ * of new_hall in this array, advance by offset, then look up the table
+ * entry for the resulting hall state.
+ */
+static const uint8_t HALL_ORDER[6] = {1, 3, 2, 6, 4, 5};
+
 /* Timer channel IDs indexed 0-2 */
 static const uint32_t TIM_CH[3] = {
     TIM_CHANNEL_1, TIM_CHANNEL_2, TIM_CHANNEL_3
@@ -72,9 +91,6 @@ static const uint32_t TIM_CH[3] = {
  * TIM1 CCER bit masks for each channel pair.
  * CCxE  = main (high-side) output enable
  * CCxNE = complementary (low-side) output enable
- * Used by Motor_Commutate to ensure ONLY the active pair is enabled,
- * preventing inactive CCxNE bits from holding low-side MOSFETs ON
- * (Bug 2 fix).
  */
 #define TIM1_CCER_CC1E   (1U << 0)
 #define TIM1_CCER_CC1NE  (1U << 2)
@@ -146,8 +162,6 @@ static void all_off(uint8_t mid)
         }
     }
     if (hw->is_advanced) {
-        /* Clear all CCxE and CCxNE bits so no complementary output can
-         * invert to 1 while CCR=0 (Bug 2 fix for idle/off state). */
         hw->htim->Instance->CCER &= ~(TIM1_CCER_CC1E  | TIM1_CCER_CC1NE |
                                       TIM1_CCER_CC2E  | TIM1_CCER_CC2NE |
                                       TIM1_CCER_CC3E  | TIM1_CCER_CC3NE);
@@ -163,16 +177,17 @@ static void all_off(uint8_t mid)
 void Motor_Init(void)
 {
     for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
-        g_motor[m].enabled     = 0;
-        g_motor[m].was_enabled = 0;
-        g_motor[m].dir         = DIR_FORWARD;
-        g_motor[m].duty        = 0;
-        g_motor[m].hall_state  = 0;
-        g_motor[m].commut_step = 0;
-        g_motor[m].hall_ticks  = 0;
-        g_motor[m].phase_map[0] = 0;
-        g_motor[m].phase_map[1] = 1;
-        g_motor[m].phase_map[2] = 2;
+        g_motor[m].enabled       = 0;
+        g_motor[m].was_enabled   = 0;
+        g_motor[m].dir           = DIR_FORWARD;
+        g_motor[m].duty          = 0;
+        g_motor[m].hall_state    = 0;
+        g_motor[m].commut_step   = 0;
+        g_motor[m].commut_offset = 0;
+        g_motor[m].hall_ticks    = 0;
+        g_motor[m].phase_map[0]  = 0;
+        g_motor[m].phase_map[1]  = 1;
+        g_motor[m].phase_map[2]  = 2;
         memset(&g_motor[m].hall_ring, 0, sizeof(HallRing_t));
 
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
@@ -184,12 +199,6 @@ void Motor_Init(void)
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
             TIM_BreakDeadTimeConfigTypeDef bdtConfig = {0};
-            /* Bug 3 fix: OSSR/OSSI=ENABLE forces complementary outputs LOW
-             * when MOE is off, preventing gate float on TIM1 (B13/14/15).
-             * AutomaticOutput=DISABLE ensures MOE is only re-enabled by an
-             * explicit __HAL_TIM_MOE_ENABLE call – hardware cannot
-             * re-enable it at the next update event, which would defeat
-             * Motor_SafeAll() and all_off(). */
             bdtConfig.OffStateRunMode   = TIM_OSSR_ENABLE;
             bdtConfig.OffStateIDLEMode  = TIM_OSSI_ENABLE;
             bdtConfig.LockLevel         = TIM_LOCKLEVEL_OFF;
@@ -245,6 +254,13 @@ void Motor_Disable(uint8_t motor_id)
     all_off(motor_id);
 }
 
+void Motor_SetCommutOffset(uint8_t motor_id, uint8_t offset)
+{
+    if (motor_id >= MOTOR_COUNT) return;
+    if (offset > 5) offset = 5;
+    g_motor[motor_id].commut_offset = offset;
+}
+
 uint8_t Motor_ReadHall(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return 0;
@@ -271,10 +287,6 @@ void Motor_ClearHallRing(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return;
     memset(&g_motor[motor_id].hall_ring, 0, sizeof(HallRing_t));
-    /* Reset hall_state to 0 (invalid) so the very next transition is always
-     * captured.  Without this, the dedup check (new_hall != ms->hall_state)
-     * would skip the first real transition after a clear because hall_state
-     * still holds the last sampled value. */
     g_motor[motor_id].hall_state = 0;
 }
 
@@ -289,11 +301,13 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 
 /* -------------------------------------------------------------------------
  * 6-step commutation for one motor.
- * Call this frequently (SysTick ISR only – NOT from main loop; see Bug 1).
+ * Call from SysTick ISR only (not main loop – see Bug 1 fix).
  *
- * Hall ring capture happens HERE – every genuine transition is recorded
- * regardless of how fast the TUI redraws.  The ring holds 64 entries
- * and wraps; the TUI display just reads the tail.
+ * commut_offset rotates which table entry is used for each hall state.
+ * offset=0: table[hall] (default, no rotation)
+ * offset=N: table[HALL_ORDER[(pos_of_hall_in_HALL_ORDER + N) % 6]]
+ * This lets you shift the energisation pattern forward or backward
+ * relative to the rotor position to find the correct alignment.
  * -------------------------------------------------------------------------
  */
 void Motor_Commutate(uint8_t mid)
@@ -305,9 +319,7 @@ void Motor_Commutate(uint8_t mid)
 
     uint8_t new_hall = Motor_ReadHall(mid);
 
-    /* Record every genuine Hall transition into the ring buffer.
-     * Valid states only (not 0 or 7). Consecutive duplicates are skipped
-     * so the ring shows the actual state sequence, not repeated samples. */
+    /* Record every genuine Hall transition into the ring buffer. */
     if (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U) {
         HallRing_t *r = &ms->hall_ring;
         r->buf[r->head & HALL_RING_MASK] = new_hall;
@@ -327,7 +339,21 @@ void Motor_Commutate(uint8_t mid)
     ms->was_enabled = 1;
 
     const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
-    CommutStep_t step = table[new_hall];
+
+    /* Apply commutation offset: find current hall state in HALL_ORDER,
+     * advance by commut_offset steps, use the resulting hall state as
+     * the table lookup key.  Falls back to direct lookup for invalid
+     * states (0 and 7) regardless of offset. */
+    uint8_t lookup_hall = new_hall;
+    if (ms->commut_offset != 0 && new_hall != 0U && new_hall != 7U) {
+        uint8_t pos = 0;
+        for (uint8_t i = 0; i < 6; i++) {
+            if (HALL_ORDER[i] == new_hall) { pos = i; break; }
+        }
+        lookup_hall = HALL_ORDER[(pos + ms->commut_offset) % 6];
+    }
+
+    CommutStep_t step = table[lookup_hall];
 
     if (step.high == 0xFF) {
         all_off(mid);
@@ -338,7 +364,7 @@ void Motor_Commutate(uint8_t mid)
     uint8_t phys_high = ms->phase_map[step.high];
     uint8_t phys_low  = ms->phase_map[step.low];
 
-    /* Zero all CCRs first */
+    /* Zero all CCRs and GPIO low-sides first */
     for (uint8_t ch = 0; ch < 3; ch++) {
         __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[ch], 0);
         if (!hw->is_advanced && hw->ls_port[ch] != NULL) {
@@ -347,13 +373,7 @@ void Motor_Commutate(uint8_t mid)
     }
 
     if (hw->is_advanced) {
-        /* Bug 2 fix: clear ALL CCxE/CCxNE bits, then enable only the
-         * active high-side CCxE and active low-side CCxNE.
-         * Previously CCER was never touched here – all six CCxNE bits
-         * remained set from HAL_TIMEx_PWMN_Start(). With CCR=0 in
-         * PWM1 mode the OCxN output inverts to 1, turning every
-         * inactive low-side MOSFET fully ON and short-circuiting
-         * two phase terminals together. */
+        /* Clear ALL CCxE/CCxNE bits, then enable only the active pair */
         hw->htim->Instance->CCER &= ~(TIM1_CCER_CC1E  | TIM1_CCER_CC1NE |
                                       TIM1_CCER_CC2E  | TIM1_CCER_CC2NE |
                                       TIM1_CCER_CC3E  | TIM1_CCER_CC3NE);

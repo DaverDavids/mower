@@ -62,6 +62,7 @@ typedef struct {
     uint16_t   duty;             /* 0 – PWM_PERIOD                        */
     uint8_t    hall_state;       /* Last raw 3-bit Hall reading (0-7)     */
     uint8_t    commut_step;      /* Active commutation step (0-5)         */
+    uint8_t    commut_offset;    /* Table rotation offset 0-5 (default 0) */
     int32_t    hall_ticks;       /* Cumulative Hall transition counter    */
     uint8_t    phase_map[3];     /* phase_map[logical] = physical_channel */
     HallRing_t hall_ring;        /* ISR-speed transition log              */
@@ -92,5 +93,8 @@ void    Motor_ClearHallRing(uint8_t motor_id);
 
 /* ----- Phase-map swap (debug) ----------------------------------------- */
 void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2);
+
+/* ----- Commutation table offset (0-5, rotates lookup by N steps) ------- */
+void Motor_SetCommutOffset(uint8_t motor_id, uint8_t offset);
 
 #endif /* MOTOR_CTRL_H */
