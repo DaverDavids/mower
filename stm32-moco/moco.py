@@ -20,6 +20,7 @@ Key bindings (TUI mode):
   PgUp / PgDn    duty +100 / -100
   0              zero duty
   A / Z          next / prev phase map permutation
+  O / I          next / prev commutation offset (0-5)
   T              reset ticks
   C              clear hall sequence (clears ring on firmware too)
   M              enter hallmonitor streaming mode (any key to exit)
@@ -130,13 +131,13 @@ def enter_cmd_mode(moco_ser: MocoSerial):
 
     The firmware boots into TUI mode (g_mode = MODE_TUI).  In TUI mode
     the CMD dispatcher never runs - every received byte is passed as a
-    single keypress to tui_handle_key().  Sending the string "RAW\n"
+    single keypress to tui_handle_key().  Sending the string "RAW\\n"
     therefore fires R (set-reverse), A (next-phase-map), W (no-op), and
     the newline as four separate TUI keys; the firmware never switches
     mode and all subsequent commands are silently ignored.
 
     The correct exit key from TUI is 'Q', which sets g_mode = MODE_CMD
-    and sends "INFO Entered CMD mode.\r\n".  After that the firmware is
+    and sends "INFO Entered CMD mode.\\r\\n".  After that the firmware is
     in CMD mode and will respond to line-oriented commands normally.
     """
     # Drain any pending VT100 redraw traffic first.
@@ -175,15 +176,16 @@ def enter_cmd_mode(moco_ser: MocoSerial):
 # ---------------------------------------------------------------------------
 class MotorState:
     def __init__(self, idx):
-        self.idx       = idx
-        self.enabled   = False
-        self.duty      = 0
-        self.direction = 0
-        self.hall      = 0
-        self.ticks     = 0
-        self.phase_map = [0, 1, 2]
-        self.perm_idx  = 0
-        self.hallmon   = deque(maxlen=HALLMON_LEN)
+        self.idx           = idx
+        self.enabled       = False
+        self.duty          = 0
+        self.direction     = 0
+        self.hall          = 0
+        self.ticks         = 0
+        self.phase_map     = [0, 1, 2]
+        self.perm_idx      = 0
+        self.commut_offset = 0
+        self.hallmon       = deque(maxlen=HALLMON_LEN)
 
     def next_perm(self):
         self.perm_idx = (self.perm_idx + 1) % 6
@@ -273,11 +275,12 @@ class MocoApp:
             m = self.motors[idx]
             for p in parts[2:]:
                 k, _, v = p.partition("=")
-                if k == "en":     m.enabled   = v == "1"
-                elif k == "dir":  m.direction = 0 if v == "FWD" else 1
-                elif k == "duty": m.duty      = int(v)
-                elif k == "hall": m.hall      = int(v, 16)
-                elif k == "ticks":m.ticks     = int(v)
+                if k == "en":           m.enabled        = v == "1"
+                elif k == "dir":        m.direction      = 0 if v == "FWD" else 1
+                elif k == "duty":       m.duty           = int(v)
+                elif k == "hall":       m.hall           = int(v, 16)
+                elif k == "ticks":      m.ticks          = int(v)
+                elif k == "offset":     m.commut_offset  = int(v)
                 elif k == "map":
                     nums = v.strip("[]").split(",")
                     m.phase_map = [int(x) for x in nums]
@@ -380,6 +383,20 @@ class MocoApp:
         pm = m.phase_map
         if self._cmd(f"MAP {self.selected+1} {pm[0]} {pm[1]} {pm[2]}"):
             self.status_msg = f"Phase map -> {pm} (perm {m.perm_idx+1}/6)"
+
+    def next_offset(self):
+        m = self.motors[self.selected]
+        new_off = (m.commut_offset + 1) % 6
+        if self._cmd(f"COMMUTOFFSET {self.selected+1} {new_off}"):
+            m.commut_offset = new_off
+            self.status_msg = f"CommutOffset -> {new_off}/5"
+
+    def prev_offset(self):
+        m = self.motors[self.selected]
+        new_off = (m.commut_offset + 5) % 6
+        if self._cmd(f"COMMUTOFFSET {self.selected+1} {new_off}"):
+            m.commut_offset = new_off
+            self.status_msg = f"CommutOffset -> {new_off}/5"
 
     def reset_ticks(self):
         if self._cmd(f"RESETTICKS {self.selected+1}"):
@@ -550,38 +567,43 @@ class MocoApp:
             f" PhaseMap: [{pm[0]},{pm[1]},{pm[2]}]  perm {m.perm_idx+1}/6  "
             "[A]next  [Z]prev", curses.color_pair(4))
 
-        safe_addstr(11, 0, "-" * min(50, W - 1), curses.color_pair(6))
+        # Commutation offset  <-- NEW ROW
+        safe_addstr(11, 0,
+            f" CommutOff: {m.commut_offset}/5  [O]next  [I]prev",
+            curses.color_pair(4))
+
+        safe_addstr(12, 0, "-" * min(50, W - 1), curses.color_pair(6))
 
         # All motors summary
-        safe_addstr(12, 0, " All: ")
+        safe_addstr(13, 0, " All: ")
         col = 6
         for i, mi in enumerate(self.motors):
             en_c = curses.color_pair(2) if mi.enabled else curses.color_pair(1)
             tag  = "EN" if mi.enabled else "DIS"
             dir_c = "F" if mi.direction == 0 else "R"
-            safe_addstr(12, col, f"M{i+1}:", 0)
+            safe_addstr(13, col, f"M{i+1}:", 0)
             col += 3
-            safe_addstr(12, col, tag, en_c | curses.A_BOLD)
+            safe_addstr(13, col, tag, en_c | curses.A_BOLD)
             col += len(tag)
-            safe_addstr(12, col, f"/{dir_c}/{mi.duty}  ")
-            col += len(f"/{dir_c}/{mi.duty}  ")
+            safe_addstr(13, col, f"/{dir_c}/{mi.duty}/off{mi.commut_offset}  ")
+            col += len(f"/{dir_c}/{mi.duty}/off{mi.commut_offset}  ")
 
         # GPIO
-        safe_addstr(13, 0,
+        safe_addstr(14, 0,
             f" GPIO: PA ODR={self.gpioa_odr:04X} IDR={self.gpioa_idr:04X}  "
             f"PB ODR={self.gpiob_odr:04X} IDR={self.gpiob_idr:04X}",
             curses.color_pair(3))
 
-        safe_addstr(14, 0, "-" * min(50, W - 1), curses.color_pair(6))
+        safe_addstr(15, 0, "-" * min(50, W - 1), curses.color_pair(6))
 
-        safe_addstr(15, 0,
+        safe_addstr(16, 0,
             " [1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10",
             curses.color_pair(6))
-        safe_addstr(16, 0,
-            " [A/Z]phase map  [T]ticks  [C]clear hall  [M]hallmonitor  [S]stop  [Q]quit",
+        safe_addstr(17, 0,
+            " [A/Z]phase map  [O/I]commut offset  [T]ticks  [C]hall  [M]monitor  [S]stop  [Q]quit",
             curses.color_pair(6))
 
-        safe_addstr(17, 0, f" {self.status_msg}", curses.color_pair(4))
+        safe_addstr(18, 0, f" {self.status_msg}", curses.color_pair(4))
 
         scr.refresh()
 
@@ -656,6 +678,8 @@ class MocoApp:
             elif key == ord('0'): self.zero_duty()
             elif key in (ord('a'), ord('A')): self.next_map()
             elif key in (ord('z'), ord('Z')): self.prev_map()
+            elif key in (ord('o'), ord('O')): self.next_offset()
+            elif key in (ord('i'), ord('I')): self.prev_offset()
             elif key in (ord('t'), ord('T')): self.reset_ticks()
             elif key in (ord('c'), ord('C')): self.clear_hallmon()
             elif key in (ord('m'), ord('M')):
@@ -663,7 +687,7 @@ class MocoApp:
             elif key in (ord('h'), ord('H')):
                 self.status_msg = (
                     "1/2/3 motor | E/D en/dis | F/R dir | Up/Dn duty | "
-                    "A/Z map | T ticks | C hall | M monitor | S stop | Q quit"
+                    "A/Z map | O/I offset | T ticks | C hall | M monitor | S stop | Q quit"
                 )
 
         self._running = False
