@@ -181,19 +181,17 @@ void PendSV_Handler(void)
 /**
   * @brief This function handles System tick timer.
   *
-  * Motor_CommutateAll() runs exclusively here at 1 kHz so every Hall
-  * transition is captured with a consistent, interrupt-driven cadence.
-  * It must NOT also be called from the main loop – doing so creates a
-  * race where SysTick writes hall_state mid-step and the main loop
-  * resumes with a stale new_hall value, producing wrong PWM output
-  * (Bug 1 fix).
+  * Motor_CommutateAll() runs exclusively here at 1 kHz.
+  * HAL_IncTick() is called first so HAL_GetTick() reflects the
+  * current tick when Motor_Commutate reads Hall state.
+  * Must NOT also be called from the main loop.
   */
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-  Motor_CommutateAll();
-  /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
+  /* USER CODE END SysTick_IRQn 0 */
+  Motor_CommutateAll();
   /* USER CODE BEGIN SysTick_IRQn 1 */
 
   /* USER CODE END SysTick_IRQn 1 */

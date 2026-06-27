@@ -1,0 +1,1073 @@
+{
+  "version": 1,
+  "fileType": "PCB_REVERSE_ENGINEERING_AUTOSAVE",
+  "savedAt": "2026-06-27T18:58:42.223Z",
+  "view": {
+    "currentView": "overlay",
+    "viewScale": 0.8957951999999999,
+    "cameraWorldCenter": {
+      "x": 79.69933757656548,
+      "y": 629.6501094027343
+    },
+    "showBothLayers": true,
+    "selectedDrawingLayer": "top"
+  },
+  "images": {
+    "top": {
+      "name": "mower-stm32.jpg",
+      "width": 5143,
+      "height": 3211,
+      "filePath": "images/mower-stm32.jpg",
+      "x": -753.7101674760019,
+      "y": 626.448098402198,
+      "scale": 1,
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "bottom": {
+      "name": "mower-mobo-front.png",
+      "width": 3660,
+      "height": 1889,
+      "filePath": "images/mower-mobo-front.png",
+      "x": -3124.658727146785,
+      "y": 765.5206292663958,
+      "scale": 1.8100000000000007,
+      "rotation": 180.2,
+      "flipX": false,
+      "flipY": false,
+      "skewX": 0,
+      "skewY": 0,
+      "keystoneV": 0,
+      "keystoneH": 0,
+      "brightness": 100,
+      "contrast": 100
+    },
+    "extra": [],
+    "layerOrder": [
+      0,
+      1
+    ]
+  },
+  "projectDirectoryName": "pcbtracer_STM32_MC",
+  "drawing": {
+    "drawingStrokes": [
+      {
+        "id": "1781736565515-trace-autofinalize",
+        "points": [
+          {
+            "x": 297.5767,
+            "y": 486.1793
+          },
+          {
+            "x": -179.8539,
+            "y": 600.3126
+          }
+        ],
+        "color": "#56B4E9",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "points": [
+          {
+            "x": 133.6106,
+            "y": 444.3841
+          },
+          {
+            "x": 66.0952,
+            "y": 867.1593
+          },
+          {
+            "x": -205.574,
+            "y": 871.9818
+          }
+        ],
+        "color": "#56B4E9",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "points": [
+          {
+            "x": 293.8034,
+            "y": 401.3014
+          },
+          {
+            "x": 72.7708,
+            "y": 966.6091
+          },
+          {
+            "x": -223.279,
+            "y": 961.2508
+          }
+        ],
+        "color": "#BCBD22",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736930239-trace-autofinalize",
+        "points": [
+          {
+            "x": 123.6753,
+            "y": 572.7691
+          },
+          {
+            "x": -199.1664,
+            "y": 698.6908
+          }
+        ],
+        "color": "#BCBD22",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736953170-trace-autofinalize",
+        "points": [
+          {
+            "x": 288.4451,
+            "y": 575.4483
+          },
+          {
+            "x": -189.7892,
+            "y": 787.1038
+          }
+        ],
+        "color": "#AA4499",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "points": [
+          {
+            "x": 127.694,
+            "y": 355.7552
+          },
+          {
+            "x": -4.9256,
+            "y": 1041.6262
+          },
+          {
+            "x": -209.8831,
+            "y": 1042.9658
+          }
+        ],
+        "color": "#AA4499",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737530324-trace-autofinalize",
+        "points": [
+          {
+            "x": 965.28,
+            "y": 604.0773
+          },
+          {
+            "x": -88.6038,
+            "y": -19.3152
+          },
+          {
+            "x": -200.4865,
+            "y": -15.4571
+          }
+        ],
+        "color": "#332288",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "points": [
+          {
+            "x": 1440.2636,
+            "y": 686.6944
+          },
+          {
+            "x": 1364.323,
+            "y": 590.9405
+          },
+          {
+            "x": 1359.6934,
+            "y": 327.0516
+          },
+          {
+            "x": -188.9177,
+            "y": 340.9405
+          }
+        ],
+        "color": "#332288",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737615769-trace-autofinalize",
+        "points": [
+          {
+            "x": 975.3617,
+            "y": 688.5127
+          },
+          {
+            "x": 110.4881,
+            "y": -98.4375
+          },
+          {
+            "x": -211.2711,
+            "y": -105.3819
+          }
+        ],
+        "color": "#00BFC4",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737637891-trace-autofinalize",
+        "points": [
+          {
+            "x": 1441.2784,
+            "y": 605.1141
+          },
+          {
+            "x": 1204.132,
+            "y": 269.4379
+          },
+          {
+            "x": -189.3865,
+            "y": 253.2342
+          }
+        ],
+        "color": "#00BFC4",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737751941-trace-autofinalize",
+        "points": [
+          {
+            "x": 967.0281,
+            "y": 526.7358
+          },
+          {
+            "x": 105.8153,
+            "y": -202.4348
+          },
+          {
+            "x": -199.6117,
+            "y": -199.2198
+          }
+        ],
+        "color": "#2CA02C",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737774829-trace-autofinalize",
+        "points": [
+          {
+            "x": 1445.3656,
+            "y": 763.1979
+          },
+          {
+            "x": 1182.4267,
+            "y": 95.6787
+          },
+          {
+            "x": -197.5733,
+            "y": 71.6787
+          }
+        ],
+        "color": "#2CA02C",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737820007-trace-autofinalize",
+        "points": [
+          {
+            "x": 1122.4245,
+            "y": 726.7025
+          },
+          {
+            "x": 778.7965,
+            "y": 172.1033
+          },
+          {
+            "x": -191.4967,
+            "y": 166.3163
+          }
+        ],
+        "color": "#7F7F7F",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737841796-trace-autofinalize",
+        "points": [
+          {
+            "x": 1280.7906,
+            "y": 565.6037
+          },
+          {
+            "x": 367.3654,
+            "y": -296.5204
+          },
+          {
+            "x": -209.0235,
+            "y": -287.2611
+          }
+        ],
+        "color": "#7F7F7F",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "points": [
+          {
+            "x": 1123.0297,
+            "y": 568.7169
+          },
+          {
+            "x": -142.6952,
+            "y": 1325.7747
+          },
+          {
+            "x": -1245.473,
+            "y": 1317.4414
+          },
+          {
+            "x": -1234.3619,
+            "y": 511.8858
+          },
+          {
+            "x": -1092.6952,
+            "y": 520.2192
+          }
+        ],
+        "color": "#F0E442",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "points": [
+          {
+            "x": 1280.3118,
+            "y": 723.281
+          },
+          {
+            "x": -172.6817,
+            "y": 1261.7649
+          },
+          {
+            "x": -1166.015,
+            "y": 1258.4315
+          },
+          {
+            "x": -1166.015,
+            "y": 781.7649
+          },
+          {
+            "x": -1086.015,
+            "y": 785.0982
+          }
+        ],
+        "color": "#F0E442",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "points": [
+          {
+            "x": 1121.9711,
+            "y": 645.4631
+          },
+          {
+            "x": -1203.0299,
+            "y": 1469.8452
+          },
+          {
+            "x": -1196.0854,
+            "y": 590.2156
+          },
+          {
+            "x": -1087.2891,
+            "y": 606.4193
+          }
+        ],
+        "color": "#D62728",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      },
+      {
+        "id": "1781738013163-trace-autofinalize",
+        "points": [
+          {
+            "x": 1280.0178,
+            "y": 643.2489
+          },
+          {
+            "x": -85.304,
+            "y": 1159.2247
+          },
+          {
+            "x": -254.7484,
+            "y": 1150.8914
+          }
+        ],
+        "color": "#D62728",
+        "size": 24,
+        "layer": "top",
+        "type": "trace"
+      }
+    ],
+    "vias": [],
+    "tracesTop": [
+      {
+        "id": "1781736565515-trace-autofinalize",
+        "x1": 297.5767,
+        "y1": 486.1793,
+        "x2": -179.8539,
+        "y2": 600.3126,
+        "size": 24,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "x1": 133.6106,
+        "y1": 444.3841,
+        "x2": 66.0952,
+        "y2": 867.1593,
+        "size": 24,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736885299-trace-autofinalize",
+        "x1": 66.0952,
+        "y1": 867.1593,
+        "x2": -205.574,
+        "y2": 871.9818,
+        "size": 24,
+        "color": "#56B4E9"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "x1": 293.8034,
+        "y1": 401.3014,
+        "x2": 72.7708,
+        "y2": 966.6091,
+        "size": 24,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736918763-trace-autofinalize",
+        "x1": 72.7708,
+        "y1": 966.6091,
+        "x2": -223.279,
+        "y2": 961.2508,
+        "size": 24,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736930239-trace-autofinalize",
+        "x1": 123.6753,
+        "y1": 572.7691,
+        "x2": -199.1664,
+        "y2": 698.6908,
+        "size": 24,
+        "color": "#BCBD22"
+      },
+      {
+        "id": "1781736953170-trace-autofinalize",
+        "x1": 288.4451,
+        "y1": 575.4483,
+        "x2": -189.7892,
+        "y2": 787.1038,
+        "size": 24,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "x1": 127.694,
+        "y1": 355.7552,
+        "x2": -4.9256,
+        "y2": 1041.6262,
+        "size": 24,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781736970465-trace-autofinalize",
+        "x1": -4.9256,
+        "y1": 1041.6262,
+        "x2": -209.8831,
+        "y2": 1042.9658,
+        "size": 24,
+        "color": "#AA4499"
+      },
+      {
+        "id": "1781737530324-trace-autofinalize",
+        "x1": 965.28,
+        "y1": 604.0773,
+        "x2": -88.6038,
+        "y2": -19.3152,
+        "size": 24,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737530324-trace-autofinalize",
+        "x1": -88.6038,
+        "y1": -19.3152,
+        "x2": -200.4865,
+        "y2": -15.4571,
+        "size": 24,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "x1": 1440.2636,
+        "y1": 686.6944,
+        "x2": 1364.323,
+        "y2": 590.9405,
+        "size": 24,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "x1": 1364.323,
+        "y1": 590.9405,
+        "x2": 1359.6934,
+        "y2": 327.0516,
+        "size": 24,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737568645-trace-autofinalize",
+        "x1": 1359.6934,
+        "y1": 327.0516,
+        "x2": -188.9177,
+        "y2": 340.9405,
+        "size": 24,
+        "color": "#332288"
+      },
+      {
+        "id": "1781737615769-trace-autofinalize",
+        "x1": 975.3617,
+        "y1": 688.5127,
+        "x2": 110.4881,
+        "y2": -98.4375,
+        "size": 24,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737615769-trace-autofinalize",
+        "x1": 110.4881,
+        "y1": -98.4375,
+        "x2": -211.2711,
+        "y2": -105.3819,
+        "size": 24,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737637891-trace-autofinalize",
+        "x1": 1441.2784,
+        "y1": 605.1141,
+        "x2": 1204.132,
+        "y2": 269.4379,
+        "size": 24,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737637891-trace-autofinalize",
+        "x1": 1204.132,
+        "y1": 269.4379,
+        "x2": -189.3865,
+        "y2": 253.2342,
+        "size": 24,
+        "color": "#00BFC4"
+      },
+      {
+        "id": "1781737751941-trace-autofinalize",
+        "x1": 967.0281,
+        "y1": 526.7358,
+        "x2": 105.8153,
+        "y2": -202.4348,
+        "size": 24,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737751941-trace-autofinalize",
+        "x1": 105.8153,
+        "y1": -202.4348,
+        "x2": -199.6117,
+        "y2": -199.2198,
+        "size": 24,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737774829-trace-autofinalize",
+        "x1": 1445.3656,
+        "y1": 763.1979,
+        "x2": 1182.4267,
+        "y2": 95.6787,
+        "size": 24,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737774829-trace-autofinalize",
+        "x1": 1182.4267,
+        "y1": 95.6787,
+        "x2": -197.5733,
+        "y2": 71.6787,
+        "size": 24,
+        "color": "#2CA02C"
+      },
+      {
+        "id": "1781737820007-trace-autofinalize",
+        "x1": 1122.4245,
+        "y1": 726.7025,
+        "x2": 778.7965,
+        "y2": 172.1033,
+        "size": 24,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737820007-trace-autofinalize",
+        "x1": 778.7965,
+        "y1": 172.1033,
+        "x2": -191.4967,
+        "y2": 166.3163,
+        "size": 24,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737841796-trace-autofinalize",
+        "x1": 1280.7906,
+        "y1": 565.6037,
+        "x2": 367.3654,
+        "y2": -296.5204,
+        "size": 24,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737841796-trace-autofinalize",
+        "x1": 367.3654,
+        "y1": -296.5204,
+        "x2": -209.0235,
+        "y2": -287.2611,
+        "size": 24,
+        "color": "#7F7F7F"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": 1123.0297,
+        "y1": 568.7169,
+        "x2": -142.6952,
+        "y2": 1325.7747,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": -142.6952,
+        "y1": 1325.7747,
+        "x2": -1245.473,
+        "y2": 1317.4414,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": -1245.473,
+        "y1": 1317.4414,
+        "x2": -1234.3619,
+        "y2": 511.8858,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737885292-trace-autofinalize",
+        "x1": -1234.3619,
+        "y1": 511.8858,
+        "x2": -1092.6952,
+        "y2": 520.2192,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": 1280.3118,
+        "y1": 723.281,
+        "x2": -172.6817,
+        "y2": 1261.7649,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": -172.6817,
+        "y1": 1261.7649,
+        "x2": -1166.015,
+        "y2": 1258.4315,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": -1166.015,
+        "y1": 1258.4315,
+        "x2": -1166.015,
+        "y2": 781.7649,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737922370-trace-autofinalize",
+        "x1": -1166.015,
+        "y1": 781.7649,
+        "x2": -1086.015,
+        "y2": 785.0982,
+        "size": 24,
+        "color": "#F0E442"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "x1": 1121.9711,
+        "y1": 645.4631,
+        "x2": -1203.0299,
+        "y2": 1469.8452,
+        "size": 24,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "x1": -1203.0299,
+        "y1": 1469.8452,
+        "x2": -1196.0854,
+        "y2": 590.2156,
+        "size": 24,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781737983935-trace-autofinalize",
+        "x1": -1196.0854,
+        "y1": 590.2156,
+        "x2": -1087.2891,
+        "y2": 606.4193,
+        "size": 24,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781738013163-trace-autofinalize",
+        "x1": 1280.0178,
+        "y1": 643.2489,
+        "x2": -85.304,
+        "y2": 1159.2247,
+        "size": 24,
+        "color": "#D62728"
+      },
+      {
+        "id": "1781738013163-trace-autofinalize",
+        "x1": -85.304,
+        "y1": 1159.2247,
+        "x2": -254.7484,
+        "y2": 1150.8914,
+        "size": 24,
+        "color": "#D62728"
+      }
+    ],
+    "tracesBottom": [],
+    "componentsTop": [],
+    "componentsBottom": [],
+    "grounds": [],
+    "powers": []
+  },
+  "powerBuses": [
+    {
+      "id": "powerbus-default",
+      "name": "+5VDC",
+      "voltage": "+5",
+      "color": "#ff0000"
+    }
+  ],
+  "groundBuses": [
+    {
+      "id": "groundbus-circuit",
+      "name": "GND",
+      "color": "#000000"
+    }
+  ],
+  "groups": [],
+  "pointIdCounter": 1,
+  "designatorCounters": {},
+  "autoAssignDesignators": true,
+  "useGlobalDesignatorCounters": false,
+  "traceColors": {
+    "top": "#D62728",
+    "bottom": "#F781BF"
+  },
+  "traceSizes": {
+    "top": 8,
+    "bottom": 6
+  },
+  "padColors": {
+    "top": "#0072B2",
+    "bottom": "#56B4E9"
+  },
+  "padSizes": {
+    "top": 18,
+    "bottom": 18
+  },
+  "componentColors": {
+    "top": "#332288",
+    "bottom": "#9467BD"
+  },
+  "componentSizes": {
+    "top": 35,
+    "bottom": 18
+  },
+  "testPointColors": {
+    "top": "#FFFF00",
+    "bottom": "#FFFF00"
+  },
+  "testPointSizes": {
+    "top": 15,
+    "bottom": 15
+  },
+  "componentConnectionColor": "#E69F00",
+  "componentConnectionSize": 4,
+  "toolLayerDefaults": {
+    "trace": "top",
+    "pad": "top",
+    "testPoint": "top",
+    "component": "top"
+  },
+  "toolSettings": {
+    "trace": {
+      "color": "#D62728",
+      "size": 8
+    },
+    "via": {
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "pad": {
+      "color": "#0072B2",
+      "size": 10
+    },
+    "component": {
+      "color": "#332288",
+      "size": 35
+    },
+    "ground": {
+      "color": "#000000",
+      "size": 25
+    },
+    "power": {
+      "color": "#ff0000",
+      "size": 25
+    }
+  },
+  "locks": {
+    "areImagesLocked": false,
+    "areViasLocked": false,
+    "arePadsLocked": false,
+    "areTracesLocked": false,
+    "areComponentsLocked": false,
+    "areGroundNodesLocked": false,
+    "arePowerNodesLocked": false
+  },
+  "visibility": {
+    "showViasLayer": true,
+    "showTopPadsLayer": true,
+    "showBottomPadsLayer": true,
+    "showTopTracesLayer": true,
+    "showBottomTracesLayer": true,
+    "showTopTestPointsLayer": true,
+    "showBottomTestPointsLayer": true,
+    "showTopComponents": true,
+    "showBottomComponents": true,
+    "showPowerLayer": true,
+    "showGroundLayer": true,
+    "showConnectionsLayer": true,
+    "showTraceCornerDots": false,
+    "showTraceEndDots": true,
+    "componentIconDisplay": "both",
+    "netHighlightDimmingLevel": 70,
+    "showICPinNumbers": true,
+    "showICPinNames": true,
+    "pinNumberPosition": "upper-right",
+    "pinNumberFontSize": 11,
+    "transparency": 33,
+    "isBottomView": false
+  },
+  "autoSave": {
+    "enabled": true,
+    "interval": 5,
+    "baseName": "pcbtracer_STM32_MC"
+  },
+  "projectInfo": {
+    "name": "pcbtracer_STM32_MC"
+  },
+  "aiSettings": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash"
+  },
+  "projectNotes": [],
+  "symptomColumns": [
+    "Item",
+    "Symptom"
+  ],
+  "noteColumns": [
+    "Item",
+    "Notes"
+  ],
+  "projectMetadata": {
+    "productName": "STM32_MC",
+    "modelNumber": "",
+    "manufacturer": "",
+    "dateManufactured": "2026-06-17"
+  },
+  "troubleshootingResults": null,
+  "dismissedErrors": [],
+  "nodeProperties": {},
+  "homeViews": {
+    "0": {
+      "pcbReferenceX": -2043.0454345846742,
+      "pcbReferenceY": 133.10165969239785,
+      "x": 0,
+      "y": 0,
+      "zoom": 0.5184,
+      "viewRotation": 0,
+      "viewFlipX": false,
+      "isBottomView": false,
+      "transparency": 33,
+      "showTopImage": true,
+      "showBottomImage": false,
+      "showViasLayer": true,
+      "showTopTracesLayer": true,
+      "showBottomTracesLayer": true,
+      "showTopPadsLayer": true,
+      "showBottomPadsLayer": true,
+      "showTopTestPointsLayer": true,
+      "showBottomTestPointsLayer": true,
+      "showTopComponents": true,
+      "showBottomComponents": true,
+      "showPowerLayer": true,
+      "showGroundLayer": true,
+      "showConnectionsLayer": true
+    }
+  },
+  "toolInstances": {
+    "via": {
+      "id": "via",
+      "name": "Via",
+      "color": "#2CA02C",
+      "size": 30
+    },
+    "padTop": {
+      "id": "padTop",
+      "name": "Pad (Top)",
+      "color": "#0072B2",
+      "size": 10
+    },
+    "padBottom": {
+      "id": "padBottom",
+      "name": "Pad (Bottom)",
+      "color": "#56B4E9",
+      "size": 10
+    },
+    "testPointTop": {
+      "id": "testPointTop",
+      "name": "Test Point (Top)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "testPointBottom": {
+      "id": "testPointBottom",
+      "name": "Test Point (Bottom)",
+      "color": "#FFFF00",
+      "size": 15
+    },
+    "traceTop": {
+      "id": "traceTop",
+      "name": "Trace (Top)",
+      "color": "#D62728",
+      "size": 8
+    },
+    "traceBottom": {
+      "id": "traceBottom",
+      "name": "Trace (Bottom)",
+      "color": "#F781BF",
+      "size": 8
+    },
+    "componentTop": {
+      "id": "componentTop",
+      "name": "Component (Top)",
+      "color": "#332288",
+      "size": 35
+    },
+    "componentBottom": {
+      "id": "componentBottom",
+      "name": "Component (Bottom)",
+      "color": "#9467BD",
+      "size": 35
+    },
+    "power": {
+      "id": "power",
+      "name": "Power",
+      "color": "#ff0000",
+      "size": 25
+    },
+    "ground": {
+      "id": "ground",
+      "name": "Ground",
+      "color": "#000000",
+      "size": 25
+    }
+  },
+  "projectStats": {
+    "sessionCount": 2,
+    "lastPromptDate": null,
+    "lastPromptSession": 0,
+    "totalWorkTimeMs": 2880000,
+    "donatedDate": null,
+    "declinedDate": null,
+    "bomsGenerated": 0,
+    "netlistsGenerated": 0,
+    "componentsIdentified": 0,
+    "schematicsGenerated": 0,
+    "troubleshootingAnalyses": 0,
+    "explainCircuitRuns": 0,
+    "datasheetExtractions": 0,
+    "measurementRuns": 0,
+    "errorCheckRuns": 0
+  }
+}

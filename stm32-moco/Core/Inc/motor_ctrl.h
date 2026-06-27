@@ -81,7 +81,7 @@ void Motor_SetDir(uint8_t motor_id, MotorDir_t dir);
 void Motor_Enable(uint8_t motor_id);
 void Motor_Disable(uint8_t motor_id);
 
-/* ----- Commutation (call from main loop / TIM ISR) --------------------- */
+/* ----- Commutation (call from SysTick ISR only, NOT main loop) --------- */
 void Motor_Commutate(uint8_t motor_id);
 void Motor_CommutateAll(void);
 

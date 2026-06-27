@@ -198,15 +198,7 @@ void Motor_Init(void)
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
             HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
-            TIM_BreakDeadTimeConfigTypeDef bdtConfig = {0};
-            bdtConfig.OffStateRunMode   = TIM_OSSR_ENABLE;
-            bdtConfig.OffStateIDLEMode  = TIM_OSSI_ENABLE;
-            bdtConfig.LockLevel         = TIM_LOCKLEVEL_OFF;
-            bdtConfig.DeadTime          = TIM1_DEADTIME;
-            bdtConfig.BreakState        = TIM_BREAK_DISABLE;
-            bdtConfig.BreakPolarity     = TIM_BREAKPOLARITY_HIGH;
-            bdtConfig.AutomaticOutput   = TIM_AUTOMATICOUTPUT_DISABLE;
-            HAL_TIMEx_ConfigBreakDeadTime(MOTOR_HW[m].htim, &bdtConfig);
+            /* BDTR (OSSR/OSSI/AutomaticOutput) configured in MX_TIM1_Init USER CODE */
         }
 
         all_off(m);
@@ -301,7 +293,7 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2)
 
 /* -------------------------------------------------------------------------
  * 6-step commutation for one motor.
- * Call from SysTick ISR only (not main loop – see Bug 1 fix).
+ * Call from SysTick ISR only (not main loop).
  *
  * commut_offset rotates which table entry is used for each hall state.
  * offset=0: table[hall] (default, no rotation)
