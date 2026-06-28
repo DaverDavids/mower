@@ -1,121 +1,102 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# The motor also stalls easily when I touch it when its rotating....  describe all code changes we need to make
+# looks like commutoff setting 4/5 works for both directions. still have some jitter at start though. often, after disabling the motor when it was running, it won't run again until it's manually moved. it stays still and draws large current until then
 
-The easy stall + startup issues together mean the commutation is **reactive only** — it only updates when Hall state changes, so at low speed or under load there's a long gap between commutation steps where the wrong phases stay energised, killing torque.
+The offset 4/5 finding and the "won't restart after stop" behavior together tell us exactly what's happening.
+
+## The Restart/High-Current Problem
+
+When the motor stops, the rotor parks at a Hall state where the current commutation step is **directly opposing** the rotor's resting position — it's locked against the energised phases drawing max current but producing no torque (or negative torque). This is the classic **locked-rotor** condition.
+
+The fix: when re-enabling after a stop, **force a commutation offset that pushes the rotor rather than locks it**. The simplest reliable fix is to briefly pulse through 2-3 forced commutation steps at low duty on enable, regardless of Hall state, to "unstick" the rotor before handing off to Hall-driven commutation.
 
 ## All Required Code Changes
 
-### 1. `motor_ctrl.c` — Force commutation on enable
-
-In `Motor_Enable()`, after setting `enabled=1`, immediately apply the current Hall state so CCER/CCR are set before the first SysTick:
+### 1. `motor_ctrl.h` — Add forced-step startup fields
 
 ```c
-void Motor_Enable(uint8_t motor_id)
-{
+uint8_t  force_steps;     // countdown of forced commutation steps remaining
+uint8_t  force_step_idx;  // current index into HALL_ORDER for forced stepping
+uint16_t force_duty;      // duty during forced stepping
+```
+
+
+### 2. `motor_ctrl.c` — Implement forced startup in `Motor_Enable()`
+
+```c
+void Motor_Enable(uint8_t motor_id) {
     if (motor_id >= MOTOR_COUNT) return;
-    g_motor[motor_id].enabled = 1;
-    g_motor[motor_id].was_enabled = 1;  // ADD: prevent all_off() race on first tick
+    MotorState_t *ms = &g_motor[motor_id];
+    ms->enabled     = 1;
+    ms->was_enabled = 1;
+    ms->force_steps    = 60;   // 60ms of forced stepping
+    ms->force_step_idx = 0;
+    ms->force_duty     = 200;  // low duty during forced phase
     if (MOTOR_HW[motor_id].is_advanced)
         __HAL_TIM_MOE_ENABLE(MOTOR_HW[motor_id].htim);
-    Motor_Commutate(motor_id);           // ADD: prime CCER/CCR immediately
 }
 ```
 
 
-### 2. `motor_ctrl.c` — Commutate every tick, not just on Hall change
+### 3. `motor_ctrl.c` — Forced stepping in `Motor_Commutate()`
 
-This is the stall fix. Currently CCER/CCR are only rewritten when `new_hall != ms->hall_state`. Under load the rotor slows, Hall stays the same for many ticks, but the energisation is still correct — **except** `all_off()` is never called and CCER stays set from last transition. Actually the real problem is the opposite: the zero-all-CCR + set-active-pair runs every tick unconditionally, which is correct.
-
-Re-reading `Motor_Commutate()` — the commutation block **does** run every tick regardless of Hall change. The Hall change block only updates the ring/ticks. So reactive-only is not the issue.
-
-**The actual stall cause**: Motor 2 low-side is GPIO (always fully on during its step). At high duty the high-side PWM is near 100% — both high and low side near fully on simultaneously = shoot-through = current spike = voltage collapse = stall. You need to **cap effective duty for M2/M3** or add a minimum off-time.
-
-### 3. `motor_ctrl.c` — Duty cap for non-advanced motors
+Replace the `ms->was_enabled = 1` block with:
 
 ```c
-// In Motor_Commutate(), just before SET_COMPARE:
-uint16_t effective_duty = ms->duty;
-if (!hw->is_advanced && effective_duty > (DUTY_MAX * 85 / 100))
-    effective_duty = DUTY_MAX * 85 / 100;  // cap at 85% to prevent shoot-through
-__HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], effective_duty);
-```
-
-
-### 4. `motor_ctrl.c` — Fix `was_enabled` race
-
-Change the commutation guard so `all_off()` doesn't fire spuriously on the first tick after enable:
-
-```c
-// Change:
-if (!ms->enabled || ms->duty == 0) {
-    if (ms->was_enabled) {
-        all_off(mid);
-        ms->was_enabled = 0;
-    }
-    return;
-}
 ms->was_enabled = 1;
 
-// To:
-if (!ms->enabled) {
-    if (ms->was_enabled) {
-        all_off(mid);
-        ms->was_enabled = 0;
+// Forced startup stepping — cycle through Hall order at low duty
+// to unstick rotor before handing off to Hall-driven commutation
+if (ms->force_steps > 0) {
+    ms->force_steps--;
+    // Advance one step every 10ms
+    if ((ms->force_steps % 10) == 0)
+        ms->force_step_idx = (ms->force_step_idx + 1) % 6;
+
+    const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
+    uint8_t forced_hall = HALL_ORDER[ms->force_step_idx];
+    CommutStep_t step   = table[forced_hall];
+    uint8_t phys_high   = ms->phase_map[step.high];
+    uint8_t phys_low    = ms->phase_map[step.low];
+
+    for (uint8_t ch = 0; ch < 3; ch++) {
+        __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[ch], 0);
+        if (!hw->is_advanced && hw->ls_port[ch])
+            HAL_GPIO_WritePin(hw->ls_port[ch], hw->ls_pin[ch], GPIO_PIN_RESET);
     }
-    return;
-}
-if (ms->duty == 0) return;  // just return, don't call all_off
-ms->was_enabled = 1;
-```
-
-
-### 5. `motor_ctrl.c` — Startup ramp
-
-In `Motor_Enable()`, save the requested duty, start from a low value and ramp up over ~200ms in the commutation ISR:
-
-Add to `MotorState_t` in `motor_ctrl.h`:
-
-```c
-uint16_t target_duty;    // requested duty
-uint8_t  ramping;        // 1 = startup ramp in progress
-```
-
-In `Motor_Enable()`:
-
-```c
-g_motor[motor_id].target_duty = g_motor[motor_id].duty;
-g_motor[motor_id].duty        = 100;  // start low
-g_motor[motor_id].ramping     = 1;
-```
-
-In `Motor_Commutate()`, after `ms->was_enabled = 1`:
-
-```c
-if (ms->ramping) {
-    if (ms->duty < ms->target_duty) {
-        ms->duty += 2;  // ramp up 2 counts/ms = ~700ms to full
-    } else {
-        ms->duty    = ms->target_duty;
-        ms->ramping = 0;
+    if (hw->is_advanced) {
+        hw->htim->Instance->CCER &= ~(TIM1_CCER_CC1E|TIM1_CCER_CC1NE|
+                                      TIM1_CCER_CC2E|TIM1_CCER_CC2NE|
+                                      TIM1_CCER_CC3E|TIM1_CCER_CC3NE);
+        hw->htim->Instance->CCER |= TIM1_CCER_CCE[phys_high] | TIM1_CCER_CCNE[phys_low];
     }
+    __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], ms->force_duty);
+    if (!hw->is_advanced)
+        HAL_GPIO_WritePin(hw->ls_port[phys_low], hw->ls_pin[phys_low], GPIO_PIN_SET);
+    return;  // skip Hall-driven commutation during forced phase
 }
 ```
 
-And update `Motor_SetDuty()` to also update `target_duty` if already enabled:
+
+### 4. `motor_ctrl.c` — Clear force_steps on disable
+
+In `Motor_Disable()`:
 
 ```c
-void Motor_SetDuty(uint8_t motor_id, uint16_t duty) {
-    if (motor_id >= MOTOR_COUNT) return;
-    if (duty > DUTY_MAX) duty = DUTY_MAX;
-    g_motor[motor_id].target_duty = duty;
-    if (!g_motor[motor_id].ramping)
-        g_motor[motor_id].duty = duty;
-}
+ms->force_steps = 0;
+```
+
+
+### 5. Keep commut_offset at 4
+
+Since offset 4 works for both directions, hardcode it as the default in `Motor_Init()`:
+
+```c
+g_motor[m].commut_offset = 4;
 ```
 
 
 ***
 
-Want me to push all of these now?
+The forced stepping acts like an open-loop kickstart — it rotates the magnetic field through one full electrical cycle at low current, which is enough to unstick the rotor from any parking position. Once `force_steps` hits 0, normal Hall-driven commutation takes over. Want me to push these changes?
 

@@ -181,11 +181,12 @@ void Motor_Init(void)
         g_motor[m].was_enabled   = 0;
         g_motor[m].dir           = DIR_FORWARD;
         g_motor[m].duty          = 0;
-        g_motor[m].target_duty   = 0;
-        g_motor[m].ramping       = 0;
+        g_motor[m].force_steps   = 0;
+        g_motor[m].force_step_idx= 0;
+        g_motor[m].force_duty    = 0;
         g_motor[m].hall_state    = 0;
         g_motor[m].commut_step   = 0;
-        g_motor[m].commut_offset = 0;
+        g_motor[m].commut_offset = 4;
         g_motor[m].hall_ticks    = 0;
         g_motor[m].phase_map[0]  = 0;
         g_motor[m].phase_map[1]  = 1;
@@ -235,17 +236,15 @@ void Motor_SetDir(uint8_t motor_id, MotorDir_t dir)
 void Motor_Enable(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return;
-    g_motor[motor_id].enabled = 1;
-    g_motor[motor_id].was_enabled = 1;
+    MotorState_t *ms = &g_motor[motor_id];
+    ms->enabled     = 1;
+    ms->was_enabled = 1;
+    ms->force_steps    = 60;
+    ms->force_step_idx = 0;
+    ms->force_duty     = 200;
     if (MOTOR_HW[motor_id].is_advanced) {
         __HAL_TIM_MOE_ENABLE(MOTOR_HW[motor_id].htim);
     }
-    uint16_t td = g_motor[motor_id].duty;
-    if (td < 100) td = 100;
-    g_motor[motor_id].target_duty = td;
-    g_motor[motor_id].duty        = 100;
-    g_motor[motor_id].ramping     = (td > 100) ? 1 : 0;
-    Motor_Commutate(motor_id);
 }
 
 void Motor_Disable(uint8_t motor_id)
@@ -254,6 +253,7 @@ void Motor_Disable(uint8_t motor_id)
     g_motor[motor_id].enabled     = 0;
     g_motor[motor_id].was_enabled = 0;
     g_motor[motor_id].duty        = 0;
+    g_motor[motor_id].force_steps = 0;
     all_off(motor_id);
 }
 
@@ -342,19 +342,38 @@ void Motor_Commutate(uint8_t mid)
 
     ms->was_enabled = 1;
 
-    if (ms->ramping) {
-        if (ms->duty < ms->target_duty) {
-            ms->duty += 2;
-        } else {
-            ms->duty    = ms->target_duty;
-            ms->ramping = 0;
-        }
-    }
-
     /* Re-enable MOE for advanced timers – all_off() in the !enabled path
      * above (or a prior transition through enabled=0) may have cleared it. */
     if (MOTOR_HW[mid].is_advanced) {
         __HAL_TIM_MOE_ENABLE(MOTOR_HW[mid].htim);
+    }
+
+    /* Forced startup stepping — cycle through Hall order at low duty
+     * to unstick rotor before handing off to Hall-driven commutation. */
+    if (ms->force_steps > 0) {
+        ms->force_steps--;
+        if ((ms->force_steps % 10) == 0)
+            ms->force_step_idx = (ms->force_step_idx + 1) % 6;
+        const CommutStep_t *tbl = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
+        uint8_t forced_hall = HALL_ORDER[ms->force_step_idx];
+        CommutStep_t step   = tbl[forced_hall];
+        uint8_t f_high      = ms->phase_map[step.high];
+        uint8_t f_low       = ms->phase_map[step.low];
+        for (uint8_t ch = 0; ch < 3; ch++) {
+            __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[ch], 0);
+            if (!hw->is_advanced && hw->ls_port[ch] != NULL)
+                HAL_GPIO_WritePin(hw->ls_port[ch], hw->ls_pin[ch], GPIO_PIN_RESET);
+        }
+        if (hw->is_advanced) {
+            hw->htim->Instance->CCER &= ~(TIM1_CCER_CC1E|TIM1_CCER_CC1NE|
+                                          TIM1_CCER_CC2E|TIM1_CCER_CC2NE|
+                                          TIM1_CCER_CC3E|TIM1_CCER_CC3NE);
+            hw->htim->Instance->CCER |= TIM1_CCER_CCE[f_high] | TIM1_CCER_CCNE[f_low];
+        }
+        __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[f_high], ms->force_duty);
+        if (!hw->is_advanced)
+            HAL_GPIO_WritePin(hw->ls_port[f_low], hw->ls_pin[f_low], GPIO_PIN_SET);
+        return;
     }
 
     const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
