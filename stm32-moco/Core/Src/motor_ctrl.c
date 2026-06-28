@@ -240,9 +240,11 @@ void Motor_Enable(uint8_t motor_id)
     if (MOTOR_HW[motor_id].is_advanced) {
         __HAL_TIM_MOE_ENABLE(MOTOR_HW[motor_id].htim);
     }
-    g_motor[motor_id].target_duty = g_motor[motor_id].duty;
+    uint16_t td = g_motor[motor_id].duty;
+    if (td < 100) td = 100;
+    g_motor[motor_id].target_duty = td;
     g_motor[motor_id].duty        = 100;
-    g_motor[motor_id].ramping     = 1;
+    g_motor[motor_id].ramping     = (td > 100) ? 1 : 0;
     Motor_Commutate(motor_id);
 }
 
