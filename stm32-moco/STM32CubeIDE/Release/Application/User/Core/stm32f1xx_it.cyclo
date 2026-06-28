@@ -6,5 +6,5 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:130:6:U
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:145:6:SVC_Handler	1
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:158:6:DebugMon_Handler	1
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:171:6:PendSV_Handler	1
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:191:6:SysTick_Handler	1
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:212:6:USB_LP_CAN1_RX0_IRQHandler	1
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:189:6:SysTick_Handler	1
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/stm32f1xx_it.c:210:6:USB_LP_CAN1_RX0_IRQHandler	1
