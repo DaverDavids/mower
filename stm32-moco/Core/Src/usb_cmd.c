@@ -245,14 +245,14 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
  *  Row 7    Duty bar + up/down keys
  *  Row 8    Hall state (live)
  *  Row 9    Hall sequence log
- *  Row 10   CommStep debug
+ *  Row 10   CommStep / Ticks debug
  *  Row 11   Phase map + swap keys
  *  Row 12   Commut offset
  *  Row 13   -------------------------------------------------------
  *  Row 14   All-motors summary (compact)
- *  Row 15   GPIOB ODR/IDR raw
- *  Row 16   TIM1 BDTR/CCER
- *  Row 17   Blank
+ *  Row 15   GPIO PA/PB ODR/IDR raw
+ *  Row 16   TIM1 MOE/OSSR/OSSI/CCER/CCR live
+ *  Row 17   -------------------------------------------------------
  *  Row 18   Key help line 1
  *  Row 19   Key help line 2
  *  Row 20   Status / last action
@@ -273,6 +273,7 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
 #define TUI_ROW_SUMMARY 14
 #define TUI_ROW_GPIO    15
 #define TUI_ROW_TIM1    16
+#define TUI_ROW_SEP3    17
 #define TUI_ROW_HELP1   18
 #define TUI_ROW_HELP2   19
 #define TUI_ROW_STATUS  20
@@ -393,11 +394,11 @@ static void tui_draw_motor_panel(void)
         send_raw(tx_scratch);
     }
 
-    /* CommStep */
+    /* CommStep / Ticks */
     tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " CommStep:%u  \x1b[33m[T]\x1b[0mreset ticks",
-        ms->commut_step);
+        " Ticks:  \x1b[36m%ld\x1b[0m  \x1b[33m[T]\x1b[0mreset",
+        (long)ms->hall_ticks);
     send_raw(tx_scratch);
 
     /* Phase map */
@@ -464,23 +465,28 @@ static void tui_draw_gpio(void)
 static void tui_draw_tim1(void)
 {
     tui_goto(TUI_ROW_TIM1, 1); tui_erase_line();
-    uint32_t ccer = TIM1->CCER, bdtr = TIM1->BDTR;
-    uint8_t moe  = (bdtr >> 15) & 1;
-    uint8_t ossr = (bdtr >> 11) & 1;
-    uint8_t ossi = (bdtr >> 10) & 1;
+    uint32_t ccer = TIM1->CCER;
+    uint32_t bdtr = TIM1->BDTR;
+    uint32_t cr1  = TIM1->CR1;
+    uint8_t  moe  = (bdtr >> 15) & 1;
+    uint8_t  ossr = (bdtr >> 11) & 1;
+    uint8_t  ossi = (bdtr >> 10) & 1;
+    uint8_t  aoe  = (bdtr >> 14) & 1;
+    uint8_t  cen  = cr1 & 1;
+    /* Fault conditions: MOE=0 while any motor enabled, or OSSR/OSSI wrong */
+    uint8_t fault = (!moe && g_motor[0].enabled) || !ossr || !ossi || aoe;
+    if (fault) send_raw("\x1b[1;31m"); else send_raw("\x1b[0m");
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " TIM1: MOE=%u OSSR=%u OSSI=%u  CCER=0x%04lX"
-        "  CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u"
-        "  CCR1=%lu CCR2=%lu CCR3=%lu",
-        moe, ossr, ossi, ccer,
+        " TIM1: CEN=%u MOE=%u OSSR=%u OSSI=%u AOE=%u  "
+        "CCER=%04lX (1E=%u 1NE=%u 2E=%u 2NE=%u 3E=%u 3NE=%u)  "
+        "CCR1=%lu CCR2=%lu CCR3=%lu",
+        cen, moe, ossr, ossi, aoe, ccer,
         (ccer>>0)&1, (ccer>>2)&1,
         (ccer>>4)&1, (ccer>>6)&1,
         (ccer>>8)&1, (ccer>>10)&1,
         TIM1->CCR1, TIM1->CCR2, TIM1->CCR3);
-    if (!moe) send_raw("\x1b[1;31m");
     send_raw(tx_scratch);
-    if (!moe) send_raw(" [MOE=0!]\x1b[0m");
-    else send_raw("\x1b[0m");
+    if (fault) send_raw("\x1b[0m");
 }
 
 static void tui_draw_help(void)
@@ -527,6 +533,7 @@ static void tui_full_redraw(void)
     tui_draw_summary();
     tui_draw_gpio();
     tui_draw_tim1();
+    tui_draw_sep(TUI_ROW_SEP3);
     tui_draw_help();
     tui_draw_status();
     tui_goto(TUI_ROW_STATUS + 1, 1);
@@ -937,6 +944,42 @@ static void dispatch(char *line)
         snprintf(tx_scratch,sizeof(tx_scratch),"OK M%d COMMUTOFFSET=%d\r\n",mid+1,off);
         USBCMD_Send(tx_scratch);
 
+    } else if (strcmp(tok, "TIM1REGS") == 0) {
+        uint32_t ccer = TIM1->CCER;
+        uint32_t bdtr = TIM1->BDTR;
+        uint32_t ccr1 = TIM1->CCR1;
+        uint32_t ccr2 = TIM1->CCR2;
+        uint32_t ccr3 = TIM1->CCR3;
+        uint32_t cr1  = TIM1->CR1;
+        uint8_t  moe  = (bdtr >> 15) & 1;
+        uint8_t  ossr = (bdtr >> 11) & 1;
+        uint8_t  ossi = (bdtr >> 10) & 1;
+        uint8_t  aoe  = (bdtr >> 14) & 1;
+        uint8_t  cen  = cr1 & 1;
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO TIM1 CR1=0x%04lX  CCER=0x%04lX  BDTR=0x%04lX\r\n",
+            cr1, ccer, bdtr);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO   CEN=%u  MOE=%u  OSSR=%u  OSSI=%u  AOE=%u\r\n",
+            cen, moe, ossr, ossi, aoe);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO   CCR1=%lu  CCR2=%lu  CCR3=%lu\r\n",
+            ccr1, ccr2, ccr3);
+        USBCMD_Send(tx_scratch);
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO   CC1E=%u CC1NE=%u  CC2E=%u CC2NE=%u  CC3E=%u CC3NE=%u\r\n",
+            (ccer>>0)&1, (ccer>>2)&1,
+            (ccer>>4)&1, (ccer>>6)&1,
+            (ccer>>8)&1, (ccer>>10)&1);
+        USBCMD_Send(tx_scratch);
+        if (!moe)  USBCMD_Send("INFO   *** MOE=0: complementary outputs suppressed! ***\r\n");
+        if (!ossr) USBCMD_Send("INFO   *** OSSR=0: off-state run mode disabled! ***\r\n");
+        if (!ossi) USBCMD_Send("INFO   *** OSSI=0: off-state idle mode disabled! ***\r\n");
+        if (aoe)   USBCMD_Send("INFO   *** AOE=1: automatic output enable is ON (should be OFF)! ***\r\n");
+        USBCMD_Send("OK TIM1REGS\r\n");
+
     } else if (strcmp(tok, "PINTEST") == 0) {
         /* PINTEST <name> <0|1>
          * Stops all motors, reconfigures the named pin as GPIO push-pull
@@ -1123,31 +1166,6 @@ static void dispatch(char *line)
             (((p->port->ODR>>bit)&1)!=(unsigned)val)?" MISMATCH":"");
         USBCMD_Send(tx_scratch);
 
-    } else if (strcmp(tok, "TIM1REGS") == 0) {
-        uint32_t ccer  = TIM1->CCER;
-        uint32_t bdtr  = TIM1->BDTR;
-        uint32_t ccr1  = TIM1->CCR1;
-        uint32_t ccr2  = TIM1->CCR2;
-        uint32_t ccr3  = TIM1->CCR3;
-        uint32_t cr1   = TIM1->CR1;
-        uint8_t  moe   = (bdtr >> 15) & 1;
-        uint8_t  ossr  = (bdtr >> 11) & 1;
-        uint8_t  ossi  = (bdtr >> 10) & 1;
-        uint8_t  aoe   = (bdtr >> 14) & 1;
-        snprintf(tx_scratch, sizeof(tx_scratch),
-            "INFO TIM1 CR1=0x%04lX CCER=0x%04lX BDTR=0x%04lX\r\n"
-            "INFO   MOE=%u OSSR=%u OSSI=%u AOE=%u\r\n"
-            "INFO   CCR1=%lu CCR2=%lu CCR3=%lu\r\n"
-            "INFO   CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u\r\n",
-            cr1, ccer, bdtr,
-            moe, ossr, ossi, aoe,
-            ccr1, ccr2, ccr3,
-            (ccer>>0)&1, (ccer>>2)&1,
-            (ccer>>4)&1, (ccer>>6)&1,
-            (ccer>>8)&1, (ccer>>10)&1);
-        USBCMD_Send(tx_scratch);
-        USBCMD_Send("OK TIM1REGS\r\n");
-
     } else if (strcmp(tok, "AFIO") == 0) {
         uint32_t mapr=AFIO->MAPR;
         uint8_t swj=(mapr>>24)&7;
@@ -1163,7 +1181,8 @@ static void dispatch(char *line)
 
     } else if (strcmp(tok, "HELP") == 0) {
         USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET\r\n");
-        USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO TIM1REGS\r\n");
+        USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
+        USBCMD_Send("INFO Debug: TIM1REGS\r\n");
         USBCMD_Send("INFO Test:  PINTEST <name> <0|1>  PINTESTALL\r\n");
         USBCMD_Send("INFO         PINTEST stops motors, releases timer channel, drives pin as GPIO\r\n");
         USBCMD_Send("INFO         PINTESTALL reads IDR of all pins without driving anything\r\n");
