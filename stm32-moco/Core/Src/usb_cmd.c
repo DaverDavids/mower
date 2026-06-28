@@ -481,9 +481,9 @@ static void tui_draw_tim1(void)
         "CCER=%04lX (1E=%u 1NE=%u 2E=%u 2NE=%u 3E=%u 3NE=%u)  "
         "CCR1=%lu CCR2=%lu CCR3=%lu",
         cen, moe, ossr, ossi, aoe, ccer,
-        (ccer>>0)&1, (ccer>>2)&1,
-        (ccer>>4)&1, (ccer>>6)&1,
-        (ccer>>8)&1, (ccer>>10)&1,
+        (unsigned int)((ccer>>0)&1), (unsigned int)((ccer>>2)&1),
+        (unsigned int)((ccer>>4)&1), (unsigned int)((ccer>>6)&1),
+        (unsigned int)((ccer>>8)&1), (unsigned int)((ccer>>10)&1),
         TIM1->CCR1, TIM1->CCR2, TIM1->CCR3);
     send_raw(tx_scratch);
     if (fault) send_raw("\x1b[0m");
@@ -970,9 +970,9 @@ static void dispatch(char *line)
         USBCMD_Send(tx_scratch);
         snprintf(tx_scratch, sizeof(tx_scratch),
             "INFO   CC1E=%u CC1NE=%u  CC2E=%u CC2NE=%u  CC3E=%u CC3NE=%u\r\n",
-            (ccer>>0)&1, (ccer>>2)&1,
-            (ccer>>4)&1, (ccer>>6)&1,
-            (ccer>>8)&1, (ccer>>10)&1);
+            (unsigned int)((ccer>>0)&1), (unsigned int)((ccer>>2)&1),
+            (unsigned int)((ccer>>4)&1), (unsigned int)((ccer>>6)&1),
+            (unsigned int)((ccer>>8)&1), (unsigned int)((ccer>>10)&1));
         USBCMD_Send(tx_scratch);
         if (!moe)  USBCMD_Send("INFO   *** MOE=0: complementary outputs suppressed! ***\r\n");
         if (!ossr) USBCMD_Send("INFO   *** OSSR=0: off-state run mode disabled! ***\r\n");

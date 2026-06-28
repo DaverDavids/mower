@@ -222,9 +222,7 @@ void Motor_SetDuty(uint8_t motor_id, uint16_t duty)
 {
     if (motor_id >= MOTOR_COUNT) return;
     if (duty > DUTY_MAX) duty = DUTY_MAX;
-    g_motor[motor_id].target_duty = duty;
-    if (!g_motor[motor_id].ramping)
-        g_motor[motor_id].duty = duty;
+    g_motor[motor_id].duty = duty;
 }
 
 void Motor_SetDir(uint8_t motor_id, MotorDir_t dir)
