@@ -60,6 +60,8 @@ typedef struct {
     uint8_t    was_enabled;      /* tracks falling edge for all_off()     */
     MotorDir_t dir;              /* Rotation direction                    */
     uint16_t   duty;             /* 0 – PWM_PERIOD                        */
+    uint16_t   target_duty;      /* requested duty (for startup ramp)     */
+    uint8_t    ramping;          /* 1 = startup ramp in progress          */
     uint8_t    hall_state;       /* Last raw 3-bit Hall reading (0-7)     */
     uint8_t    commut_step;      /* Active commutation step (0-5)         */
     uint8_t    commut_offset;    /* Table rotation offset 0-5 (default 0) */

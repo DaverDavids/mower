@@ -181,6 +181,8 @@ void Motor_Init(void)
         g_motor[m].was_enabled   = 0;
         g_motor[m].dir           = DIR_FORWARD;
         g_motor[m].duty          = 0;
+        g_motor[m].target_duty   = 0;
+        g_motor[m].ramping       = 0;
         g_motor[m].hall_state    = 0;
         g_motor[m].commut_step   = 0;
         g_motor[m].commut_offset = 0;
@@ -219,7 +221,9 @@ void Motor_SetDuty(uint8_t motor_id, uint16_t duty)
 {
     if (motor_id >= MOTOR_COUNT) return;
     if (duty > DUTY_MAX) duty = DUTY_MAX;
-    g_motor[motor_id].duty = duty;
+    g_motor[motor_id].target_duty = duty;
+    if (!g_motor[motor_id].ramping)
+        g_motor[motor_id].duty = duty;
 }
 
 void Motor_SetDir(uint8_t motor_id, MotorDir_t dir)
@@ -232,9 +236,14 @@ void Motor_Enable(uint8_t motor_id)
 {
     if (motor_id >= MOTOR_COUNT) return;
     g_motor[motor_id].enabled = 1;
+    g_motor[motor_id].was_enabled = 1;
     if (MOTOR_HW[motor_id].is_advanced) {
         __HAL_TIM_MOE_ENABLE(MOTOR_HW[motor_id].htim);
     }
+    g_motor[motor_id].target_duty = g_motor[motor_id].duty;
+    g_motor[motor_id].duty        = 100;
+    g_motor[motor_id].ramping     = 1;
+    Motor_Commutate(motor_id);
 }
 
 void Motor_Disable(uint8_t motor_id)
@@ -320,15 +329,31 @@ void Motor_Commutate(uint8_t mid)
         ms->hall_state = new_hall;
     }
 
-    if (!ms->enabled || ms->duty == 0) {
+    if (!ms->enabled) {
         if (ms->was_enabled) {
             all_off(mid);
             ms->was_enabled = 0;
         }
         return;
     }
+    if (ms->duty == 0) return;
 
     ms->was_enabled = 1;
+
+    if (ms->ramping) {
+        if (ms->duty < ms->target_duty) {
+            ms->duty += 2;
+        } else {
+            ms->duty    = ms->target_duty;
+            ms->ramping = 0;
+        }
+    }
+
+    /* Re-enable MOE for advanced timers – all_off() in the !enabled path
+     * above (or a prior transition through enabled=0) may have cleared it. */
+    if (MOTOR_HW[mid].is_advanced) {
+        __HAL_TIM_MOE_ENABLE(MOTOR_HW[mid].htim);
+    }
 
     const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
 
@@ -372,7 +397,10 @@ void Motor_Commutate(uint8_t mid)
         hw->htim->Instance->CCER |= TIM1_CCER_CCE[phys_high] | TIM1_CCER_CCNE[phys_low];
     }
 
-    __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], ms->duty);
+    uint16_t effective_duty = ms->duty;
+    if (!hw->is_advanced && effective_duty > (DUTY_MAX * 85 / 100))
+        effective_duty = DUTY_MAX * 85 / 100;
+    __HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], effective_duty);
 
     if (!hw->is_advanced) {
         HAL_GPIO_WritePin(hw->ls_port[phys_low], hw->ls_pin[phys_low], GPIO_PIN_SET);

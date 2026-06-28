@@ -1,47 +1,121 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# describe all code changes we need to make, concisely
+# The motor also stalls easily when I touch it when its rotating....  describe all code changes we need to make
 
-Here are all the changes needed:
+The easy stall + startup issues together mean the commutation is **reactive only** — it only updates when Hall state changes, so at low speed or under load there's a long gap between commutation steps where the wrong phases stay energised, killing torque.
 
-## 1. `stm32f1xx_it.c` — Call commutation from SysTick
+## All Required Code Changes
 
-Add `Motor_CommutateAll()` to the existing `SysTick_Handler`:
+### 1. `motor_ctrl.c` — Force commutation on enable
+
+In `Motor_Enable()`, after setting `enabled=1`, immediately apply the current Hall state so CCER/CCR are set before the first SysTick:
 
 ```c
-// Add include at top:
-#include "motor_ctrl.h"
-
-// Inside SysTick_Handler (already exists, just add the call):
-void SysTick_Handler(void)
+void Motor_Enable(uint8_t motor_id)
 {
-    HAL_IncTick();
-    Motor_CommutateAll();  // ADD THIS
+    if (motor_id >= MOTOR_COUNT) return;
+    g_motor[motor_id].enabled = 1;
+    g_motor[motor_id].was_enabled = 1;  // ADD: prevent all_off() race on first tick
+    if (MOTOR_HW[motor_id].is_advanced)
+        __HAL_TIM_MOE_ENABLE(MOTOR_HW[motor_id].htim);
+    Motor_Commutate(motor_id);           // ADD: prime CCER/CCR immediately
 }
 ```
 
 
-## 2. `motor_ctrl.c` — Force initial commutation step when stationary
+### 2. `motor_ctrl.c` — Commutate every tick, not just on Hall change
 
-In `Motor_Commutate()`, the Hall transition check only logs ring/ticks on a change, but the **commutation itself must run even when hall is stable**. The problem is `ms->hall_state` starts at `0`, so the very first call logs a transition from `0→6` correctly, but after that hall stays `6` and the code skips the ring update — that's fine. The CCER write is unconditional below, so that's not the bug.
+This is the stall fix. Currently CCER/CCR are only rewritten when `new_hall != ms->hall_state`. Under load the rotor slows, Hall stays the same for many ticks, but the energisation is still correct — **except** `all_off()` is never called and CCER stays set from last transition. Actually the real problem is the opposite: the zero-all-CCR + set-active-pair runs every tick unconditionally, which is correct.
 
-The **actual** bug is just \#1 — `Motor_CommutateAll()` is never called. No other logic change needed in `motor_ctrl.c`.
+Re-reading `Motor_Commutate()` — the commutation block **does** run every tick regardless of Hall change. The Hall change block only updates the ring/ticks. So reactive-only is not the issue.
 
-## 3. `motor_ctrl.c` — Low-side CCxNE bug (your reported symptom)
+**The actual stall cause**: Motor 2 low-side is GPIO (always fully on during its step). At high duty the high-side PWM is near 100% — both high and low side near fully on simultaneously = shoot-through = current spike = voltage collapse = stall. You need to **cap effective duty for M2/M3** or add a minimum off-time.
 
-Looking at the CCER write:
+### 3. `motor_ctrl.c` — Duty cap for non-advanced motors
 
 ```c
-hw->htim->Instance->CCER |= TIM1_CCER_CCE[phys_high] | TIM1_CCER_CCNE[phys_low];
+// In Motor_Commutate(), just before SET_COMPARE:
+uint16_t effective_duty = ms->duty;
+if (!hw->is_advanced && effective_duty > (DUTY_MAX * 85 / 100))
+    effective_duty = DUTY_MAX * 85 / 100;  // cap at 85% to prevent shoot-through
+__HAL_TIM_SET_COMPARE(hw->htim, TIM_CH[phys_high], effective_duty);
 ```
 
-`TIM1_CCER_CCNE` uses `phys_low` as index — but `phys_low` is the **physical channel for the low side**, which is correct. This looks fine on paper.
 
-**But** — `OCNPolarity` in `MX_TIM1_Init` is set to `TIM_OCNPOLARITY_HIGH` and `OCNIdleState = TIM_OCNIDLESTATE_RESET`. With OSSR/OSSI now enabled, when a CCxNE bit is set and CCR=0, the complementary output is active-low (off). So the low side only switches on when `CCxNE=1` AND the timer is running. That should work once SysTick is calling commutation.
+### 4. `motor_ctrl.c` — Fix `was_enabled` race
 
-## Summary — one real fix needed
+Change the commutation guard so `all_off()` doesn't fire spuriously on the first tick after enable:
 
-Only **`stm32f1xx_it.c`** needs changing. Everything else is structurally correct. The motor has never commutated once since the firmware was written because `Motor_CommutateAll()` has no caller.
+```c
+// Change:
+if (!ms->enabled || ms->duty == 0) {
+    if (ms->was_enabled) {
+        all_off(mid);
+        ms->was_enabled = 0;
+    }
+    return;
+}
+ms->was_enabled = 1;
 
-Want me to push that fix now?
+// To:
+if (!ms->enabled) {
+    if (ms->was_enabled) {
+        all_off(mid);
+        ms->was_enabled = 0;
+    }
+    return;
+}
+if (ms->duty == 0) return;  // just return, don't call all_off
+ms->was_enabled = 1;
+```
+
+
+### 5. `motor_ctrl.c` — Startup ramp
+
+In `Motor_Enable()`, save the requested duty, start from a low value and ramp up over ~200ms in the commutation ISR:
+
+Add to `MotorState_t` in `motor_ctrl.h`:
+
+```c
+uint16_t target_duty;    // requested duty
+uint8_t  ramping;        // 1 = startup ramp in progress
+```
+
+In `Motor_Enable()`:
+
+```c
+g_motor[motor_id].target_duty = g_motor[motor_id].duty;
+g_motor[motor_id].duty        = 100;  // start low
+g_motor[motor_id].ramping     = 1;
+```
+
+In `Motor_Commutate()`, after `ms->was_enabled = 1`:
+
+```c
+if (ms->ramping) {
+    if (ms->duty < ms->target_duty) {
+        ms->duty += 2;  // ramp up 2 counts/ms = ~700ms to full
+    } else {
+        ms->duty    = ms->target_duty;
+        ms->ramping = 0;
+    }
+}
+```
+
+And update `Motor_SetDuty()` to also update `target_duty` if already enabled:
+
+```c
+void Motor_SetDuty(uint8_t motor_id, uint16_t duty) {
+    if (motor_id >= MOTOR_COUNT) return;
+    if (duty > DUTY_MAX) duty = DUTY_MAX;
+    g_motor[motor_id].target_duty = duty;
+    if (!g_motor[motor_id].ramping)
+        g_motor[motor_id].duty = duty;
+}
+```
+
+
+***
+
+Want me to push all of these now?
 
