@@ -14,6 +14,9 @@
  * -------------------------------------------------------------------------
  */
 
+/* Firmware version – displayed in TUI title bar and VERSION command */
+#define FIRMWARE_VERSION  "moco v1.0"
+
 /* Number of supported motors */
 #define MOTOR_COUNT  3U
 

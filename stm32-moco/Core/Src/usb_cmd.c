@@ -305,7 +305,7 @@ static void tui_full_clear(void)
 static void tui_draw_title(void)
 {
     tui_goto(TUI_ROW_TITLE, 1);
-    send_raw("\x1b[1;36m  MOCO Motor Controller  ");
+    send_raw("\x1b[1;36m  MOCO " FIRMWARE_VERSION "  ");
     send_raw("\x1b[0;33m[Q]exit TUI  [RAW]cmd mode\x1b[0m");
 }
 
@@ -1176,6 +1176,11 @@ static void dispatch(char *line)
         USBCMD_Send(tx_scratch);
         USBCMD_Send("OK AFIO\r\n");
 
+    } else if (strcmp(tok, "VERSION") == 0) {
+        snprintf(tx_scratch, sizeof(tx_scratch), "INFO " FIRMWARE_VERSION "\r\n");
+        USBCMD_Send(tx_scratch);
+        USBCMD_Send("OK VERSION\r\n");
+
     } else if (strcmp(tok, "RAW") == 0) {
         USBCMD_Send("OK already in CMD mode\r\n");
 
@@ -1186,7 +1191,7 @@ static void dispatch(char *line)
         USBCMD_Send("INFO Test:  PINTEST <name> <0|1>  PINTESTALL\r\n");
         USBCMD_Send("INFO         PINTEST stops motors, releases timer channel, drives pin as GPIO\r\n");
         USBCMD_Send("INFO         PINTESTALL reads IDR of all pins without driving anything\r\n");
-        USBCMD_Send("INFO Mode:  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
+        USBCMD_Send("INFO System: VERSION  HELP  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
         USBCMD_Send("OK HELP\r\n");
 
     } else {
