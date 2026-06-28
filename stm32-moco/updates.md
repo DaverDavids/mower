@@ -1,121 +1,47 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# check the code and add any more debug we need to figure this out. add it to the serial command line as well as the serial UI which we connect to with moco.py
+# describe all code changes we need to make, concisely
 
-Now I have the full picture. Here are the exact changes needed:
+Here are all the changes needed:
 
-## The Confirmed Bug
+## 1. `stm32f1xx_it.c` — Call commutation from SysTick
 
-In `Motor_Commutate()`, after setting CCER bits, the low-side complementary output (CCxN) on TIM1 outputs the **inverse** of its paired CCx channel. You zero all CCRs first, then set only the high-side CCR to `duty`. The low-side CCR stays at 0 — CCx is LOW 100% → CCxN is HIGH 100%. That should work... **BUT** — looking at `all_off()`, it calls `__HAL_TIM_MOE_DISABLE()`.  `Motor_Enable()` calls `__HAL_TIM_MOE_ENABLE()`. However, `Motor_Commutate()` also calls `all_off()` internally when `step.high == 0xFF`, and **crucially: when `!ms->enabled || ms->duty == 0` and `ms->was_enabled == 1`**.
-
-The issue: there's **no `REGS TIM1` command** to read raw TIM1 registers (BDTR, CCER, CCR1-3). That's the missing debug. Everything else exists but there's no way to see TIM1's actual register state live.
-
-***
-
-## Exact Code Changes
-
-### `usb_cmd.c` — Add `TIM1REGS` command
-
-In the `dispatch()` function, add this block **before** the final `else` (unknown command) block:
+Add `Motor_CommutateAll()` to the existing `SysTick_Handler`:
 
 ```c
-} else if (strcmp(tok, "TIM1REGS") == 0) {
-    uint32_t ccer  = TIM1->CCER;
-    uint32_t bdtr  = TIM1->BDTR;
-    uint32_t ccr1  = TIM1->CCR1;
-    uint32_t ccr2  = TIM1->CCR2;
-    uint32_t ccr3  = TIM1->CCR3;
-    uint32_t cr1   = TIM1->CR1;
-    uint8_t  moe   = (bdtr >> 15) & 1;
-    uint8_t  ossr  = (bdtr >> 11) & 1;
-    uint8_t  ossi  = (bdtr >> 10) & 1;
-    uint8_t  aoe   = (bdtr >> 14) & 1;
-    snprintf(tx_scratch, sizeof(tx_scratch),
-        "INFO TIM1 CR1=0x%04lX CCER=0x%04lX BDTR=0x%04lX\r\n"
-        "INFO   MOE=%u OSSR=%u OSSI=%u AOE=%u\r\n"
-        "INFO   CCR1=%lu CCR2=%lu CCR3=%lu\r\n"
-        "INFO   CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u\r\n",
-        cr1, ccer, bdtr,
-        moe, ossr, ossi, aoe,
-        ccr1, ccr2, ccr3,
-        (ccer>>0)&1, (ccer>>2)&1,
-        (ccer>>4)&1, (ccer>>6)&1,
-        (ccer>>8)&1, (ccer>>10)&1);
-    USBCMD_Send(tx_scratch);
-    USBCMD_Send("OK TIM1REGS\r\n");
-```
+// Add include at top:
+#include "motor_ctrl.h"
 
-Also update the `HELP` command's INFO line for GPIO to include `TIM1REGS`:
-
-```c
-// Change this line:
-USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
-// To:
-USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO TIM1REGS\r\n");
-```
-
-
-***
-
-### `usb_cmd.c` — Add TUI row for TIM1 BDTR/CCER
-
-In the layout constants block, add one row and shift the ones below it:
-
-```c
-// After TUI_ROW_GPIO = 15, add:
-#define TUI_ROW_TIM1    16
-// Shift these up by 1:
-#define TUI_ROW_HELP1   18   // was 17
-#define TUI_ROW_HELP2   19   // was 18
-#define TUI_ROW_STATUS  20   // was 19
-```
-
-Add a new `tui_draw_tim1()` function after `tui_draw_gpio()`:
-
-```c
-static void tui_draw_tim1(void)
+// Inside SysTick_Handler (already exists, just add the call):
+void SysTick_Handler(void)
 {
-    tui_goto(TUI_ROW_TIM1, 1); tui_erase_line();
-    uint32_t ccer = TIM1->CCER, bdtr = TIM1->BDTR;
-    uint8_t moe  = (bdtr >> 15) & 1;
-    uint8_t ossr = (bdtr >> 11) & 1;
-    uint8_t ossi = (bdtr >> 10) & 1;
-    snprintf(tx_scratch, sizeof(tx_scratch),
-        " TIM1: MOE=%u OSSR=%u OSSI=%u  CCER=0x%04lX"
-        "  CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u"
-        "  CCR1=%lu CCR2=%lu CCR3=%lu",
-        moe, ossr, ossi, ccer,
-        (ccer>>0)&1, (ccer>>2)&1,
-        (ccer>>4)&1, (ccer>>6)&1,
-        (ccer>>8)&1, (ccer>>10)&1,
-        TIM1->CCR1, TIM1->CCR2, TIM1->CCR3);
-    /* Highlight MOE=0 as a fault */
-    if (!moe) send_raw("\x1b[1;31m");
-    send_raw(tx_scratch);
-    if (!moe) send_raw(" [MOE=0!]\x1b[0m");
-    else send_raw("\x1b[0m");
+    HAL_IncTick();
+    Motor_CommutateAll();  // ADD THIS
 }
 ```
 
-Then call it in both `tui_full_redraw()` and `tui_partial_redraw()`, right after `tui_draw_gpio()`:
+
+## 2. `motor_ctrl.c` — Force initial commutation step when stationary
+
+In `Motor_Commutate()`, the Hall transition check only logs ring/ticks on a change, but the **commutation itself must run even when hall is stable**. The problem is `ms->hall_state` starts at `0`, so the very first call logs a transition from `0→6` correctly, but after that hall stays `6` and the code skips the ring update — that's fine. The CCER write is unconditional below, so that's not the bug.
+
+The **actual** bug is just \#1 — `Motor_CommutateAll()` is never called. No other logic change needed in `motor_ctrl.c`.
+
+## 3. `motor_ctrl.c` — Low-side CCxNE bug (your reported symptom)
+
+Looking at the CCER write:
 
 ```c
-// In tui_full_redraw() and tui_partial_redraw(), after tui_draw_gpio():
-tui_draw_tim1();
+hw->htim->Instance->CCER |= TIM1_CCER_CCE[phys_high] | TIM1_CCER_CCNE[phys_low];
 ```
 
+`TIM1_CCER_CCNE` uses `phys_low` as index — but `phys_low` is the **physical channel for the low side**, which is correct. This looks fine on paper.
 
-***
+**But** — `OCNPolarity` in `MX_TIM1_Init` is set to `TIM_OCNPOLARITY_HIGH` and `OCNIdleState = TIM_OCNIDLESTATE_RESET`. With OSSR/OSSI now enabled, when a CCxNE bit is set and CCR=0, the complementary output is active-low (off). So the low side only switches on when `CCxNE=1` AND the timer is running. That should work once SysTick is calling commutation.
 
-### What to look for after flashing
+## Summary — one real fix needed
 
-Run `TIM1REGS` in CMD mode (or watch the new TIM1 row in TUI) while Motor 1 is enabled and duty > 0. The smoking gun will be one of:
+Only **`stm32f1xx_it.c`** needs changing. Everything else is structurally correct. The motor has never commutated once since the firmware was written because `Motor_CommutateAll()` has no caller.
 
-
-| Symptom | Cause |
-| :-- | :-- |
-| `MOE=0` while enabled | `all_off()` disabled MOE and something prevented `Motor_Enable()` re-enabling it |
-| `CC1NE=CC2NE=CC3NE=0` | CCER not being set — commutation not reaching the active step |
-| `CCR1=CCR2=CCR3=0` | Duty not being applied — `duty == 0` guard firing |
-| `OSSR=0` or `OSSI=0` | BDTR user code not running (CubeMX regenerated over it) |
+Want me to push that fix now?
 

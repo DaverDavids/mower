@@ -247,7 +247,7 @@ static void MX_TIM1_Init(void)
   sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
   sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.DeadTime = 4;
   sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
   sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
   sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
@@ -268,6 +268,11 @@ static void MX_TIM1_Init(void)
   sBreakDeadTimeConfig.AutomaticOutput  = TIM_AUTOMATICOUTPUT_DISABLE;
   sBreakDeadTimeConfig.DeadTime         = 0;
   HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig);
+  /* Fix OCNPolarity: CubeMX sets TIM_OCNPOLARITY_HIGH (CCxNP=0), which
+   * makes OCxN = OCxREF — NOT the complement. With CCR=0, OCxREF=0 →
+   * OCxN=0 always (low-side never turns on).  TIM_OCNPOLARITY_LOW
+   * (CCxNP=1) gives OCxN = NOT(OCxREF), so CCR=0 → OCxN=1 (100% ON). */
+  TIM1->CCER |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
 
