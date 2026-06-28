@@ -251,10 +251,11 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
  *  Row 13   -------------------------------------------------------
  *  Row 14   All-motors summary (compact)
  *  Row 15   GPIOB ODR/IDR raw
- *  Row 16   Blank
- *  Row 17   Key help line 1
- *  Row 18   Key help line 2
- *  Row 19   Status / last action
+ *  Row 16   TIM1 BDTR/CCER
+ *  Row 17   Blank
+ *  Row 18   Key help line 1
+ *  Row 19   Key help line 2
+ *  Row 20   Status / last action
  */
 
 #define TUI_ROW_TITLE    1
@@ -271,9 +272,10 @@ static void send_raw(const char *s) { USBCMD_Send(s); }
 #define TUI_ROW_SEP2    13
 #define TUI_ROW_SUMMARY 14
 #define TUI_ROW_GPIO    15
-#define TUI_ROW_HELP1   17
-#define TUI_ROW_HELP2   18
-#define TUI_ROW_STATUS  19
+#define TUI_ROW_TIM1    16
+#define TUI_ROW_HELP1   18
+#define TUI_ROW_HELP2   19
+#define TUI_ROW_STATUS  20
 
 #define TUI_HALLSEQ_SHOW  20U
 
@@ -459,6 +461,28 @@ static void tui_draw_gpio(void)
     send_raw(tx_scratch);
 }
 
+static void tui_draw_tim1(void)
+{
+    tui_goto(TUI_ROW_TIM1, 1); tui_erase_line();
+    uint32_t ccer = TIM1->CCER, bdtr = TIM1->BDTR;
+    uint8_t moe  = (bdtr >> 15) & 1;
+    uint8_t ossr = (bdtr >> 11) & 1;
+    uint8_t ossi = (bdtr >> 10) & 1;
+    snprintf(tx_scratch, sizeof(tx_scratch),
+        " TIM1: MOE=%u OSSR=%u OSSI=%u  CCER=0x%04lX"
+        "  CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u"
+        "  CCR1=%lu CCR2=%lu CCR3=%lu",
+        moe, ossr, ossi, ccer,
+        (ccer>>0)&1, (ccer>>2)&1,
+        (ccer>>4)&1, (ccer>>6)&1,
+        (ccer>>8)&1, (ccer>>10)&1,
+        TIM1->CCR1, TIM1->CCR2, TIM1->CCR3);
+    if (!moe) send_raw("\x1b[1;31m");
+    send_raw(tx_scratch);
+    if (!moe) send_raw(" [MOE=0!]\x1b[0m");
+    else send_raw("\x1b[0m");
+}
+
 static void tui_draw_help(void)
 {
     tui_goto(TUI_ROW_HELP1, 1); tui_erase_line();
@@ -502,6 +526,7 @@ static void tui_full_redraw(void)
     tui_draw_sep(TUI_ROW_SEP2);
     tui_draw_summary();
     tui_draw_gpio();
+    tui_draw_tim1();
     tui_draw_help();
     tui_draw_status();
     tui_goto(TUI_ROW_STATUS + 1, 1);
@@ -513,6 +538,7 @@ static void tui_partial_redraw(void)
     tui_draw_motor_panel();
     tui_draw_summary();
     tui_draw_gpio();
+    tui_draw_tim1();
     tui_draw_status();
     tui_goto(TUI_ROW_STATUS + 1, 1);
 }
@@ -1097,6 +1123,31 @@ static void dispatch(char *line)
             (((p->port->ODR>>bit)&1)!=(unsigned)val)?" MISMATCH":"");
         USBCMD_Send(tx_scratch);
 
+    } else if (strcmp(tok, "TIM1REGS") == 0) {
+        uint32_t ccer  = TIM1->CCER;
+        uint32_t bdtr  = TIM1->BDTR;
+        uint32_t ccr1  = TIM1->CCR1;
+        uint32_t ccr2  = TIM1->CCR2;
+        uint32_t ccr3  = TIM1->CCR3;
+        uint32_t cr1   = TIM1->CR1;
+        uint8_t  moe   = (bdtr >> 15) & 1;
+        uint8_t  ossr  = (bdtr >> 11) & 1;
+        uint8_t  ossi  = (bdtr >> 10) & 1;
+        uint8_t  aoe   = (bdtr >> 14) & 1;
+        snprintf(tx_scratch, sizeof(tx_scratch),
+            "INFO TIM1 CR1=0x%04lX CCER=0x%04lX BDTR=0x%04lX\r\n"
+            "INFO   MOE=%u OSSR=%u OSSI=%u AOE=%u\r\n"
+            "INFO   CCR1=%lu CCR2=%lu CCR3=%lu\r\n"
+            "INFO   CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u\r\n",
+            cr1, ccer, bdtr,
+            moe, ossr, ossi, aoe,
+            ccr1, ccr2, ccr3,
+            (ccer>>0)&1, (ccer>>2)&1,
+            (ccer>>4)&1, (ccer>>6)&1,
+            (ccer>>8)&1, (ccer>>10)&1);
+        USBCMD_Send(tx_scratch);
+        USBCMD_Send("OK TIM1REGS\r\n");
+
     } else if (strcmp(tok, "AFIO") == 0) {
         uint32_t mapr=AFIO->MAPR;
         uint8_t swj=(mapr>>24)&7;
@@ -1112,7 +1163,7 @@ static void dispatch(char *line)
 
     } else if (strcmp(tok, "HELP") == 0) {
         USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET\r\n");
-        USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
+        USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO TIM1REGS\r\n");
         USBCMD_Send("INFO Test:  PINTEST <name> <0|1>  PINTESTALL\r\n");
         USBCMD_Send("INFO         PINTEST stops motors, releases timer channel, drives pin as GPIO\r\n");
         USBCMD_Send("INFO         PINTESTALL reads IDR of all pins without driving anything\r\n");

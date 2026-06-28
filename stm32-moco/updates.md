@@ -1,161 +1,121 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# update stale comments and other sections, help me fix all other issues you see. Describe exact code changes to make, be very concise/terse but precise
+# check the code and add any more debug we need to figure this out. add it to the serial command line as well as the serial UI which we connect to with moco.py
 
-Now I have everything I need. Here is the complete, precise change list.
+Now I have the full picture. Here are the exact changes needed:
 
-***
+## The Confirmed Bug
 
-## File-by-file fixes
+In `Motor_Commutate()`, after setting CCER bits, the low-side complementary output (CCxN) on TIM1 outputs the **inverse** of its paired CCx channel. You zero all CCRs first, then set only the high-side CCR to `duty`. The low-side CCR stays at 0 — CCx is LOW 100% → CCxN is HIGH 100%. That should work... **BUT** — looking at `all_off()`, it calls `__HAL_TIM_MOE_DISABLE()`.  `Motor_Enable()` calls `__HAL_TIM_MOE_ENABLE()`. However, `Motor_Commutate()` also calls `all_off()` internally when `step.high == 0xFF`, and **crucially: when `!ms->enabled || ms->duty == 0` and `ms->was_enabled == 1`**.
 
-### `project-and-pins.txt` — stale "Known bugs" section
-
-The three bugs listed are already fixed. Replace the entire block :
-
-```
-Known bugs (unfixed as of 2026-06-24):
-    1. Motor_CommutateAll() called from both SysTick ISR and main() ...
-    2. TIM1 CCER not cleared for inactive phases ...
-    3. Motor_Init() BDTR: OSSR/OSSI=DISABLE, AutomaticOutput=ENABLE ...
-```
-
-With:
-
-```
-Fixed bugs (resolved 2026-06-27):
-    1. Motor_CommutateAll() is now called exclusively from SysTick_Handler.
-       main() while-loop no longer calls it (race condition eliminated).
-    2. TIM1 CCER: all CCxE/CCxNE bits are cleared each step before enabling
-       only the active high/low pair (shoot-through eliminated).
-    3. Motor_Init() BDTR now sets OSSR=ENABLE, OSSI=ENABLE,
-       AutomaticOutput=DISABLE (Bug 3 fix applied in MX_TIM1_Init USER CODE).
-```
-
+The issue: there's **no `REGS TIM1` command** to read raw TIM1 registers (BDTR, CCER, CCR1-3). That's the missing debug. Everything else exists but there's no way to see TIM1's actual register state live.
 
 ***
 
-### `main.c` — wrong GPIO init comments
+## Exact Code Changes
 
-**Change 1** — wrong low-side label in `WritePin` comment :
+### `usb_cmd.c` — Add `TIM1REGS` command
+
+In the `dispatch()` function, add this block **before** the final `else` (unknown command) block:
 
 ```c
-// WRONG:
-/*Configure GPIO pin Output Level - PB3=M3LSA, PB5=M2LSC, PB9=M3LSB, PB11=M3LSC, PB12=M2LSB */
-
-// CORRECT:
-/*Configure GPIO pin Output Level - PB3=M2LSB, PB5=M2LSC, PB9=M3LSA, PB11=M3LSB, PB12=M3LSC */
+} else if (strcmp(tok, "TIM1REGS") == 0) {
+    uint32_t ccer  = TIM1->CCER;
+    uint32_t bdtr  = TIM1->BDTR;
+    uint32_t ccr1  = TIM1->CCR1;
+    uint32_t ccr2  = TIM1->CCR2;
+    uint32_t ccr3  = TIM1->CCR3;
+    uint32_t cr1   = TIM1->CR1;
+    uint8_t  moe   = (bdtr >> 15) & 1;
+    uint8_t  ossr  = (bdtr >> 11) & 1;
+    uint8_t  ossi  = (bdtr >> 10) & 1;
+    uint8_t  aoe   = (bdtr >> 14) & 1;
+    snprintf(tx_scratch, sizeof(tx_scratch),
+        "INFO TIM1 CR1=0x%04lX CCER=0x%04lX BDTR=0x%04lX\r\n"
+        "INFO   MOE=%u OSSR=%u OSSI=%u AOE=%u\r\n"
+        "INFO   CCR1=%lu CCR2=%lu CCR3=%lu\r\n"
+        "INFO   CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u\r\n",
+        cr1, ccer, bdtr,
+        moe, ossr, ossi, aoe,
+        ccr1, ccr2, ccr3,
+        (ccer>>0)&1, (ccer>>2)&1,
+        (ccer>>4)&1, (ccer>>6)&1,
+        (ccer>>8)&1, (ccer>>10)&1);
+    USBCMD_Send(tx_scratch);
+    USBCMD_Send("OK TIM1REGS\r\n");
 ```
 
-**Change 2** — wrong label in `GPIO_Init` comment below it :
+Also update the `HELP` command's INFO line for GPIO to include `TIM1REGS`:
 
 ```c
-// WRONG:
-  /*Configure GPIO pins : PB3 PB5 PB9 PB11 PB12 (low-side enables, plain GPIO output)
-   * PB3=M3LSA, PB5=M2LSC (fix: was missing), PB9=M3LSB, PB11=M3LSC, PB12=M2LSB */
-
-// CORRECT:
-  /*Configure GPIO pins : PB3 PB5 PB9 PB11 PB12 (low-side enables, plain GPIO output)
-   * PB3=M2LSB, PB5=M2LSC, PB9=M3LSA, PB11=M3LSB, PB12=M3LSC */
-```
-
-These are comment-only — the actual `GPIO_PIN_x` values and `MOTOR_HW` descriptor in `motor_ctrl.c` are already correct .
-
-***
-
-### `stm32f1xx_it.c` — `SysTick_Handler` ordering
-
-`Motor_CommutateAll()` fires before `HAL_IncTick()`, which means any `HAL_Delay()` call in progress (e.g. boot delay) can produce a commutation tick with HAL time not yet incremented — irrelevant at runtime, but creates subtle ordering risk . Move it after:
-
-```c
-// BEFORE:
-void SysTick_Handler(void) {
-    Motor_CommutateAll();   // runs before HAL tick
-    HAL_IncTick();
-
-// AFTER:
-void SysTick_Handler(void) {
-    HAL_IncTick();          // increment HAL timebase first
-    Motor_CommutateAll();   // then commutate (consistent 1 kHz, after tick is valid)
-```
-
-Also update the comment block above it — remove the "Bug 1 fix" wording since that bug is history:
-
-```c
- * Motor_CommutateAll() runs exclusively here at 1 kHz.
- * HAL_IncTick() is called first so HAL_GetTick() reflects the
- * current tick when Motor_Commutate reads Hall state.
- * Must NOT also be called from the main loop.
+// Change this line:
+USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
+// To:
+USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO TIM1REGS\r\n");
 ```
 
 
 ***
 
-### `motor_ctrl.h` — stale comment on `Motor_Commutate`
+### `usb_cmd.c` — Add TUI row for TIM1 BDTR/CCER
 
-The public API comment says :
+In the layout constants block, add one row and shift the ones below it:
 
 ```c
-/* ----- Commutation (call from main loop / TIM ISR) --------------------- */
+// After TUI_ROW_GPIO = 15, add:
+#define TUI_ROW_TIM1    16
+// Shift these up by 1:
+#define TUI_ROW_HELP1   18   // was 17
+#define TUI_ROW_HELP2   19   // was 18
+#define TUI_ROW_STATUS  20   // was 19
 ```
 
-Change to:
+Add a new `tui_draw_tim1()` function after `tui_draw_gpio()`:
 
 ```c
-/* ----- Commutation (call from SysTick ISR only, NOT main loop) --------- */
-```
-
-
-***
-
-### `motor_ctrl.c` — `Motor_Commutate` doc block ordering note
-
-The function doc block says :
-
-```c
- * Call from SysTick ISR only (not main loop – see Bug 1 fix).
-```
-
-Change to:
-
-```c
- * Call from SysTick ISR only (not main loop).
-```
-
-
-***
-
-### `motor_ctrl.c` — `Motor_Init()` redundant BDTR call
-
-`Motor_Init()` calls `HAL_TIMEx_ConfigBreakDeadTime()` with `OSSR_ENABLE/OSSI_ENABLE/AutomaticOutput_DISABLE` for Motor 1 . `MX_TIM1_Init()` in `main.c` already does the exact same thing in its `USER CODE END TIM1_Init 2` block , so `Motor_Init` is doing it twice. Remove it from `Motor_Init()` — the `main.c` USER CODE block is the right place since it survives CubeMX regeneration:
-
-```c
-// In Motor_Init(), REMOVE this entire block:
-if (MOTOR_HW[m].is_advanced) {
-    HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
-    HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
-    HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
-    TIM_BreakDeadTimeConfigTypeDef bdtConfig = {0};
-    bdtConfig.OffStateRunMode   = TIM_OSSR_ENABLE;
-    ...
-    HAL_TIMEx_ConfigBreakDeadTime(MOTOR_HW[m].htim, &bdtConfig);
+static void tui_draw_tim1(void)
+{
+    tui_goto(TUI_ROW_TIM1, 1); tui_erase_line();
+    uint32_t ccer = TIM1->CCER, bdtr = TIM1->BDTR;
+    uint8_t moe  = (bdtr >> 15) & 1;
+    uint8_t ossr = (bdtr >> 11) & 1;
+    uint8_t ossi = (bdtr >> 10) & 1;
+    snprintf(tx_scratch, sizeof(tx_scratch),
+        " TIM1: MOE=%u OSSR=%u OSSI=%u  CCER=0x%04lX"
+        "  CC1E=%u CC1NE=%u CC2E=%u CC2NE=%u CC3E=%u CC3NE=%u"
+        "  CCR1=%lu CCR2=%lu CCR3=%lu",
+        moe, ossr, ossi, ccer,
+        (ccer>>0)&1, (ccer>>2)&1,
+        (ccer>>4)&1, (ccer>>6)&1,
+        (ccer>>8)&1, (ccer>>10)&1,
+        TIM1->CCR1, TIM1->CCR2, TIM1->CCR3);
+    /* Highlight MOE=0 as a fault */
+    if (!moe) send_raw("\x1b[1;31m");
+    send_raw(tx_scratch);
+    if (!moe) send_raw(" [MOE=0!]\x1b[0m");
+    else send_raw("\x1b[0m");
 }
 ```
 
-**Keep** the `HAL_TIMEx_PWMN_Start` calls — just move the BDTR config out. Final result for that block in `Motor_Init()`:
+Then call it in both `tui_full_redraw()` and `tui_partial_redraw()`, right after `tui_draw_gpio()`:
 
 ```c
-if (MOTOR_HW[m].is_advanced) {
-    HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
-    HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_2);
-    HAL_TIMEx_PWMN_Start(MOTOR_HW[m].htim, TIM_CHANNEL_3);
-    /* BDTR (OSSR/OSSI/AutomaticOutput) configured in MX_TIM1_Init USER CODE */
-}
+// In tui_full_redraw() and tui_partial_redraw(), after tui_draw_gpio():
+tui_draw_tim1();
 ```
 
 
 ***
 
-## Summary of what's left for hardware debugging
+### What to look for after flashing
 
-All code issues are now clean. The remaining vibration-without-rotation is almost certainly a **commutation offset problem** — use `HALLMONITOR` while spinning the wheel by hand and confirm you see all 6 distinct states (1,2,3,4,5,6) cycling. If any state is missing or you see 0/7, you still have a hall wire issue that no offset value can fix.
+Run `TIM1REGS` in CMD mode (or watch the new TIM1 row in TUI) while Motor 1 is enabled and duty > 0. The smoking gun will be one of:
+
+
+| Symptom | Cause |
+| :-- | :-- |
+| `MOE=0` while enabled | `all_off()` disabled MOE and something prevented `Motor_Enable()` re-enabling it |
+| `CC1NE=CC2NE=CC3NE=0` | CCER not being set — commutation not reaching the active step |
+| `CCR1=CCR2=CCR3=0` | Duty not being applied — `duty == 0` guard firing |
+| `OSSR=0` or `OSSI=0` | BDTR user code not running (CubeMX regenerated over it) |
 
