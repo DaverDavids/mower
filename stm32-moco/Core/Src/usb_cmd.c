@@ -412,17 +412,17 @@ static void tui_draw_motor_panel(void)
     /* Commutation offset */
     tui_goto(TUI_ROW_OFFSET, 1); tui_erase_line();
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " CommOff: \x1b[1;33m%u\x1b[0m/5  "
+        " CommOff: \x1b[1;33m%u\x1b[0m/6  "
         "\x1b[33m[O]\x1b[0mnext offset  \x1b[33m[I]\x1b[0mprev offset",
-        ms->commut_offset);
+        ms->commut_offset + 1);
     send_raw(tx_scratch);
 }
 
 static const uint8_t phase_perms[6][3] = {
-    {0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}
+    {2,1,0},{2,0,1},{1,2,0},{1,0,2},{0,2,1},{0,1,2}
 };
 
-static uint8_t current_perm_idx[MOTOR_COUNT] = {0,0,0};
+static uint8_t current_perm_idx[MOTOR_COUNT] = {5,5,0};
 
 static uint8_t find_perm_idx(uint8_t m)
 {
@@ -447,7 +447,7 @@ static void tui_draw_summary(void)
             ms->enabled ? "\x1b[32mEN\x1b[0m" : "\x1b[31mDIS\x1b[0m",
             ms->dir == DIR_FORWARD ? "F" : "R",
             ms->duty,
-            ms->commut_offset);
+            ms->commut_offset + 1);
         send_raw(tx_scratch);
     }
 }
@@ -651,7 +651,7 @@ static void tui_handle_key(uint8_t key)
         uint8_t off = (ms->commut_offset + 1) % 6;
         Motor_SetCommutOffset(m, off);
         snprintf(tui_status_msg, sizeof(tui_status_msg),
-            "CommutOffset -> %u/5", off);
+            "CommutOffset -> %u/6", off + 1);
         break;
     }
     case 'i': case 'I':
@@ -659,7 +659,7 @@ static void tui_handle_key(uint8_t key)
         uint8_t off = (ms->commut_offset + 5) % 6;
         Motor_SetCommutOffset(m, off);
         snprintf(tui_status_msg, sizeof(tui_status_msg),
-            "CommutOffset -> %u/5", off);
+            "CommutOffset -> %u/6", off + 1);
         break;
     }
 
@@ -822,7 +822,7 @@ static void dispatch(char *line)
             snprintf(tx_scratch,sizeof(tx_scratch),
                 "INFO M%d: en=%d dir=%s duty=%u hall=0x%X step=%u offset=%u ticks=%ld map=[%d,%d,%d]\r\n",
                 m+1,ms->enabled,ms->dir==DIR_FORWARD?"FWD":"REV",ms->duty,
-                ms->hall_state,ms->commut_step,ms->commut_offset,(long)ms->hall_ticks,
+                ms->hall_state,ms->commut_step,ms->commut_offset + 1,(long)ms->hall_ticks,
                 ms->phase_map[0],ms->phase_map[1],ms->phase_map[2]);
             USBCMD_Send(tx_scratch);
         }
@@ -937,11 +937,11 @@ static void dispatch(char *line)
 
     } else if (strcmp(tok, "COMMUTOFFSET") == 0) {
         char *s_mid=strtok(NULL," \t"),*s_off=strtok(NULL," \t");
-        if(!s_mid||!s_off){USBCMD_Send("ERR USAGE: COMMUTOFFSET <motor 1-3> <0-5>\r\n");return;}
-        int mid=atoi(s_mid)-1,off=atoi(s_off);
+        if(!s_mid||!s_off){USBCMD_Send("ERR USAGE: COMMUTOFFSET <motor 1-3> <1-6>\r\n");return;}
+        int mid=atoi(s_mid)-1,off=atoi(s_off)-1;
         if(mid<0||mid>=MOTOR_COUNT||off<0||off>5){USBCMD_Send("ERR INVALID_ARG\r\n");return;}
         Motor_SetCommutOffset((uint8_t)mid,(uint8_t)off);
-        snprintf(tx_scratch,sizeof(tx_scratch),"OK M%d COMMUTOFFSET=%d\r\n",mid+1,off);
+        snprintf(tx_scratch,sizeof(tx_scratch),"OK M%d COMMUTOFFSET=%d\r\n",mid+1,off+1);
         USBCMD_Send(tx_scratch);
 
     } else if (strcmp(tok, "TIM1REGS") == 0) {

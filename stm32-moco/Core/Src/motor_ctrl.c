@@ -13,10 +13,11 @@
  *   Invalid states 0b000 and 0b111 map to STOP (step 255).
  *
  * Commutation offset:
- *   commut_offset (0-5) rotates the lookup table by N steps relative
- *   to the hall state.  Use Motor_SetCommutOffset() / COMMUTOFFSET cmd
- *   to find the correct alignment for a given motor without reflashing.
- *   The canonical forward sequence for the valid hall states is:
+ *   commut_offset (0-5, displayed 1-6) rotates the lookup table by N
+ *   steps relative to the hall state.  Use Motor_SetCommutOffset() /
+ *   COMMUTOFFSET cmd to find the correct alignment for a given motor
+ *   without reflashing.  The canonical forward sequence for the valid
+ *   hall states is:
  *     index: 0  1  2  3  4  5
  *     hall:  1  3  2  6  4  5
  *   offset=0 means hall state drives its own table row (default).
@@ -54,23 +55,23 @@ typedef struct { uint8_t high; uint8_t low; } CommutStep_t;
 
 static const CommutStep_t COMMUT_FWD[8] = {
     {0xFF, 0xFF},  /* 0b000 – invalid           */
-    {0,    1   },  /* 0b001 – Hall=1: CH1H, CH2L */
-    {2,    0   },  /* 0b010 – Hall=2: CH3H, CH1L */
-    {1,    0   },  /* 0b011 – Hall=3: CH2H, CH1L */
-    {1,    2   },  /* 0b100 – Hall=4: CH2H, CH3L */
-    {0,    2   },  /* 0b101 – Hall=5: CH1H, CH3L */
-    {2,    1   },  /* 0b110 – Hall=6: CH3H, CH2L */
+    {1,    2   },  /* 0b001 – Hall=1: CH2H, CH3L */
+    {0,    1   },  /* 0b010 – Hall=2: CH1H, CH2L */
+    {0,    2   },  /* 0b011 – Hall=3: CH1H, CH3L */
+    {2,    0   },  /* 0b100 – Hall=4: CH3H, CH1L */
+    {2,    1   },  /* 0b101 – Hall=5: CH3H, CH2L */
+    {1,    0   },  /* 0b110 – Hall=6: CH2H, CH1L */
     {0xFF, 0xFF},  /* 0b111 – invalid           */
 };
 
 static const CommutStep_t COMMUT_REV[8] = {
     {0xFF, 0xFF},  /* 0b000 – invalid           */
-    {1,    0   },  /* 0b001 */
-    {0,    2   },  /* 0b010 */
-    {0,    1   },  /* 0b011 */
-    {2,    1   },  /* 0b100 */
-    {2,    0   },  /* 0b101 */
-    {1,    2   },  /* 0b110 */
+    {2,    1   },  /* 0b001 */
+    {1,    0   },  /* 0b010 */
+    {2,    0   },  /* 0b011 */
+    {0,    2   },  /* 0b100 */
+    {1,    2   },  /* 0b101 */
+    {0,    1   },  /* 0b110 */
     {0xFF, 0xFF},  /* 0b111 – invalid           */
 };
 
@@ -186,11 +187,11 @@ void Motor_Init(void)
         g_motor[m].force_duty    = 0;
         g_motor[m].hall_state    = 0;
         g_motor[m].commut_step   = 0;
-        g_motor[m].commut_offset = 4;
+        g_motor[m].commut_offset = 0;
         g_motor[m].hall_ticks    = 0;
-        g_motor[m].phase_map[0]  = 0;
-        g_motor[m].phase_map[1]  = 1;
-        g_motor[m].phase_map[2]  = 2;
+        g_motor[m].phase_map[0]  = (m == 2) ? 2 : 0;
+        g_motor[m].phase_map[1]  = (m == 2) ? 1 : 1;
+        g_motor[m].phase_map[2]  = (m == 2) ? 0 : 2;
         memset(&g_motor[m].hall_ring, 0, sizeof(HallRing_t));
 
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);

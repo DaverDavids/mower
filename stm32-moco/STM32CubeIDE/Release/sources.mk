@@ -27,14 +27,6 @@ Application/User/Core \
 Application/User/Startup \
 Application/User/USB_DEVICE/App \
 Application/User/USB_DEVICE/Target \
-Debug/Application/User/Core \
-Debug/Application/User/Startup \
-Debug/Application/User/USB_DEVICE/App \
-Debug/Application/User/USB_DEVICE/Target \
-Debug/Drivers/CMSIS \
-Debug/Drivers/STM32F1xx_HAL_Driver \
-Debug/Middlewares/USB_Device_Library \
-Debug \
 Drivers/CMSIS \
 Drivers/STM32F1xx_HAL_Driver \
 Middlewares/USB_Device_Library \
