@@ -189,9 +189,15 @@ void Motor_Init(void)
         g_motor[m].commut_step   = 0;
         g_motor[m].commut_offset = 0;
         g_motor[m].hall_ticks    = 0;
-        g_motor[m].phase_map[0]  = (m == 2) ? 2 : 0;
-        g_motor[m].phase_map[1]  = (m == 2) ? 1 : 1;
-        g_motor[m].phase_map[2]  = (m == 2) ? 0 : 2;
+        if (m == 1) {
+            g_motor[m].phase_map[0] = 2;
+            g_motor[m].phase_map[1] = 0;
+            g_motor[m].phase_map[2] = 1;
+        } else {
+            g_motor[m].phase_map[0] = 0;
+            g_motor[m].phase_map[1] = 1;
+            g_motor[m].phase_map[2] = 2;
+        }
         memset(&g_motor[m].hall_ring, 0, sizeof(HallRing_t));
 
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
@@ -207,6 +213,7 @@ void Motor_Init(void)
 
         all_off(m);
     }
+    g_motor[2].commut_offset = 4;   /* M3 default: offset 5/6 (displayed) */
 }
 
 void Motor_SafeAll(void)
@@ -238,9 +245,9 @@ void Motor_Enable(uint8_t motor_id)
     MotorState_t *ms = &g_motor[motor_id];
     ms->enabled     = 1;
     ms->was_enabled = 1;
-    ms->force_steps    = 60;
+    ms->force_steps    = 120;
     ms->force_step_idx = 0;
-    ms->force_duty     = 200;
+    ms->force_duty     = (ms->duty > 0 && ms->duty < 400) ? ms->duty : 400;
     if (MOTOR_HW[motor_id].is_advanced) {
         MOTOR_HW[motor_id].htim->Instance->CCER &= ~(
             TIM1_CCER_CC1E|TIM1_CCER_CC1NE|
