@@ -132,6 +132,9 @@ class MocoSerial:
                     while b"\n" in buf:
                         line, buf = buf.split(b"\n", 1)
                         text = line.decode("utf-8", errors="replace").rstrip("\r")
+                        # Strip any ANSI escape sequences the firmware may emit
+                        import re
+                        text = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)
                         if text:
                             self._response_queue.append(text)
             except Exception:
@@ -421,6 +424,10 @@ class MocoApp:
         self.status_msg     = "Connected."
         self.gpioa_odr      = 0; self.gpioa_idr = 0
         self.gpiob_odr      = 0; self.gpiob_idr = 0
+        # TIM1 live register snapshot (polled via TIM1REGS cmd)
+        self.tim1_moe   = None   # True/False or None if unknown
+        self.tim1_ccer  = None   # int or None
+        self.tim1_ccr   = [None, None, None]   # CCR1/2/3
         self._poll_lock     = threading.Lock()
         self._running       = True
         self._hallmon_mode  = False
@@ -442,6 +449,7 @@ class MocoApp:
         for line in lines:
             self._parse_gpio(line)
         self._fetch_hallseq(self.selected)
+        self._fetch_tim1regs()
 
     def poll_once(self):
         with self._poll_lock:
@@ -452,6 +460,7 @@ class MocoApp:
             for line in self.moco.send_and_wait("ODRDUMP", timeout=0.3):
                 self._parse_gpio(line)
             self._fetch_hallseq(self.selected)
+            self._fetch_tim1regs()
 
     def _fetch_hallseq(self, motor_idx: int):
         lines = self.moco.send_and_wait(f"HALLSEQ {motor_idx + 1}", timeout=0.5)
@@ -467,6 +476,34 @@ class MocoApp:
                             m.hallmon.append(v)
                 except Exception:
                     pass
+
+    def _fetch_tim1regs(self):
+        """Poll TIM1REGS and parse MOE, CCER, CCR1/2/3."""
+        lines = self.moco.send_and_wait("TIM1REGS", timeout=0.3)
+        for line in lines:
+            self._parse_tim1regs(line)
+
+    def _parse_tim1regs(self, line):
+        """Parse lines like:
+             INFO TIM1 MOE=1 CCER=0x0011 CCR1=720 CCR2=0 CCR3=0
+        """
+        if "TIM1" not in line:
+            return
+        try:
+            for token in line.split():
+                k, _, v = token.partition("=")
+                if k == "MOE":
+                    self.tim1_moe = (v == "1")
+                elif k == "CCER":
+                    self.tim1_ccer = int(v, 16)
+                elif k == "CCR1":
+                    self.tim1_ccr[0] = int(v)
+                elif k == "CCR2":
+                    self.tim1_ccr[1] = int(v)
+                elif k == "CCR3":
+                    self.tim1_ccr[2] = int(v)
+        except Exception:
+            pass
 
     # -----------------------------------------------------------------------
     def _parse_status(self, line):
@@ -661,6 +698,42 @@ class MocoApp:
         self._hallmon_mode = False
 
     # -----------------------------------------------------------------------
+    def _draw_tim1_row(self, scr, row, W, safe_addstr):
+        """Render one row showing live TIM1 MOE/CCER/CCR state."""
+        # Channel enable bits in CCER
+        # CC1E=bit0, CC1NE=bit2, CC2E=bit4, CC2NE=bit6, CC3E=bit8, CC3NE=bit10
+        CCE_BITS  = [0,  4,  8]
+        CCNE_BITS = [2,  6, 10]
+
+        if self.tim1_ccer is None:
+            safe_addstr(row, 0, " TIM1: (no data)", curses.color_pair(4))
+            return
+
+        moe_s = "MOE=1" if self.tim1_moe else "MOE=0"
+        moe_col = curses.color_pair(2) | curses.A_BOLD if self.tim1_moe else curses.color_pair(1) | curses.A_BOLD
+        safe_addstr(row, 0, " TIM1: ", 0)
+        safe_addstr(row, 7, moe_s, moe_col)
+        col = 13
+
+        ch_names = ["CH1", "CH2", "CH3"]
+        active_ls = 0
+        for i in range(3):
+            cce  = (self.tim1_ccer >> CCE_BITS[i])  & 1
+            ccne = (self.tim1_ccer >> CCNE_BITS[i]) & 1
+            ccr  = self.tim1_ccr[i] if self.tim1_ccr[i] is not None else 0
+            if ccne:
+                active_ls += 1
+            hs_col = curses.color_pair(2) | curses.A_BOLD if cce  else curses.color_pair(6)
+            ls_col = curses.color_pair(2) | curses.A_BOLD if ccne else curses.color_pair(6)
+            tag = f"{ch_names[i]} HS={'ON ' if cce else 'off'} LS={'ON' if ccne else 'off'} CCR={ccr:<4}  "
+            # Colour the whole tag based on HS state
+            safe_addstr(row, col, tag, hs_col if cce else (ls_col if ccne else curses.color_pair(6)))
+            col += len(tag)
+
+        if active_ls > 1:
+            warn = f" !! {active_ls} LS ON !!"
+            safe_addstr(row, col, warn, curses.color_pair(1) | curses.A_BOLD)
+
     def draw(self, scr):
         scr.erase()
         H, W = scr.getmaxyx()
@@ -762,14 +835,17 @@ class MocoApp:
             f"PB ODR={self.gpiob_odr:04X} IDR={self.gpiob_idr:04X}",
             curses.color_pair(3))
 
-        safe_addstr(15, 0, "-" * min(50, W - 1), curses.color_pair(6))
-        safe_addstr(16, 0,
+        # TIM1 live register row (polled from firmware TIM1REGS cmd)
+        self._draw_tim1_row(scr, 15, W, safe_addstr)
+
+        safe_addstr(16, 0, "-" * min(50, W - 1), curses.color_pair(6))
+        safe_addstr(17, 0,
             " [1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10",
             curses.color_pair(6))
-        safe_addstr(17, 0,
+        safe_addstr(18, 0,
             " [A/Z]phase map  [O/I]commut offset  [T]ticks  [C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit",
             curses.color_pair(6))
-        safe_addstr(18, 0, f" {self.status_msg}", curses.color_pair(4))
+        safe_addstr(19, 0, f" {self.status_msg}", curses.color_pair(4))
         scr.refresh()
 
     # -----------------------------------------------------------------------
