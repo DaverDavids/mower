@@ -341,15 +341,17 @@ void Motor_Commutate(uint8_t mid)
         }
         return;
     }
-    if (ms->duty == 0) return;
 
     ms->was_enabled = 1;
 
-    /* Re-enable MOE for advanced timers – all_off() in the !enabled path
-     * above (or a prior transition through enabled=0) may have cleared it. */
-    if (MOTOR_HW[mid].is_advanced) {
-        __HAL_TIM_MOE_ENABLE(MOTOR_HW[mid].htim);
-    }
+    /* Keep MOE asserted on every tick while the motor is enabled.
+     * Must come before the duty==0 guard: if duty is 0 we still want
+     * MOE set so the next non-zero duty takes effect immediately without
+     * a race against the SysTick reading duty before it is written. */
+    if (hw->is_advanced)
+        __HAL_TIM_MOE_ENABLE(hw->htim);
+
+    if (ms->duty == 0) return;
 
     /* Forced startup stepping — cycle through Hall order at low duty
      * to unstick rotor before handing off to Hall-driven commutation. */
