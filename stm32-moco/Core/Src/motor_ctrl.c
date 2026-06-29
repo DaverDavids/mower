@@ -242,6 +242,10 @@ void Motor_Enable(uint8_t motor_id)
     ms->force_step_idx = 0;
     ms->force_duty     = 200;
     if (MOTOR_HW[motor_id].is_advanced) {
+        MOTOR_HW[motor_id].htim->Instance->CCER &= ~(
+            TIM1_CCER_CC1E|TIM1_CCER_CC1NE|
+            TIM1_CCER_CC2E|TIM1_CCER_CC2NE|
+            TIM1_CCER_CC3E|TIM1_CCER_CC3NE);
         __HAL_TIM_MOE_ENABLE(MOTOR_HW[motor_id].htim);
     }
 }
