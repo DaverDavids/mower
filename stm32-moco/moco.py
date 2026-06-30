@@ -20,7 +20,7 @@ Key bindings (TUI mode):
   PgUp / PgDn    duty +100 / -100
   0              zero duty
   A / Z          next / prev phase map permutation
-  O / I          next / prev commutation offset (0-5)
+  O / I          next / prev commutation offset (1-6)
   T              reset ticks
   C              clear hall sequence (clears ring on firmware too)
   M              enter hallmonitor streaming mode (any key to exit)
@@ -826,7 +826,7 @@ class MocoApp:
             "[A]next  [Z]prev", curses.color_pair(4))
 
         safe_addstr(11, 0,
-            f" CommutOff: {m.commut_offset}/5  [O]next  [I]prev",
+            f" CommutOff: {m.commut_offset + 1}/6  [O]next  [I]prev",
             curses.color_pair(4))
 
         safe_addstr(12, 0, "-" * min(50, W - 1), curses.color_pair(6))
@@ -841,7 +841,7 @@ class MocoApp:
             col += 3
             safe_addstr(13, col, tag, en_c | curses.A_BOLD)
             col += len(tag)
-            safe_addstr(13, col, f"/{dir_c}/{mi.duty}/off{mi.commut_offset}  ")
+            safe_addstr(13, col, f"/{dir_c}/{mi.duty}/off{mi.commut_offset + 1}  ")
             col += len(f"/{dir_c}/{mi.duty}/off{mi.commut_offset}  ")
 
         safe_addstr(14, 0,

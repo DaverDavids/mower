@@ -422,7 +422,7 @@ static const uint8_t phase_perms[6][3] = {
     {2,1,0},{2,0,1},{1,2,0},{1,0,2},{0,2,1},{0,1,2}
 };
 
-static uint8_t current_perm_idx[MOTOR_COUNT] = {5,1,5};
+static uint8_t current_perm_idx[MOTOR_COUNT] = {5,1,4};
 
 static uint8_t find_perm_idx(uint8_t m)
 {
