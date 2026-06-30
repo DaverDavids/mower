@@ -194,6 +194,11 @@ void Motor_Init(void)
             g_motor[m].phase_map[1] = 0;
             g_motor[m].phase_map[2] = 2;
             g_motor[m].commut_offset = 3;
+        } else if (m == 2) {
+            g_motor[m].phase_map[0] = 0;
+            g_motor[m].phase_map[1] = 2;
+            g_motor[m].phase_map[2] = 1;
+            g_motor[m].commut_offset = 0;
         } else {
             g_motor[m].phase_map[0] = 0;
             g_motor[m].phase_map[1] = 1;
@@ -224,7 +229,7 @@ void Motor_Init(void)
 
         all_off(m);
     }
-    g_motor[2].commut_offset = 4;   /* M3 default: offset 5/6 (displayed) */
+
 }
 
 void Motor_SafeAll(void)
@@ -424,7 +429,7 @@ void Motor_Commutate(uint8_t mid)
                 ms->estimated_ticks--;
             }
         }
-        MotorDir_t eff = (mid == 1) ? (ms->dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) : ms->dir;
+        MotorDir_t eff = (mid == 1 || mid == 2) ? (ms->dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) : ms->dir;
         const CommutStep_t *tbl = (eff == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
         uint8_t forced_hall = HALL_ORDER[ms->force_step_idx];
         CommutStep_t step   = tbl[forced_hall];
@@ -448,7 +453,7 @@ void Motor_Commutate(uint8_t mid)
     }
 
     MotorDir_t effective_dir = ms->dir;
-    if (mid == 1) effective_dir = (ms->dir == DIR_FORWARD) ? DIR_REVERSE : DIR_FORWARD;
+    if (mid == 1 || mid == 2) effective_dir = (ms->dir == DIR_FORWARD) ? DIR_REVERSE : DIR_FORWARD;
     const CommutStep_t *table = (effective_dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
 
     /* Apply commutation offset: find current hall state in HALL_ORDER,
