@@ -149,23 +149,3 @@ All three timers: Prescaler=0, ARR=1439, 72 MHz clock -> 50 kHz PWM.
       Motor_Commutate() so MOE is asserted every tick while enabled,
       regardless of when duty is written from main context.
 
-------------------------------
-## CubeMX IOC – Required Changes
-
-The current stm32-moco.ioc does NOT match this wiring. Before regenerating
-code, make the following changes in STM32CubeMX:
-
-  Pins to REMOVE current assignment:
-    PA6  - currently TIM3_CH1  -> reassign to GPIO_Input (M3HA)
-    PA7  - currently TIM3_CH2  -> reassign to GPIO_Input (M3HB)
-    PB1  - currently GPIO_Output -> reassign to TIM3_CH4 (M3HSC)
-    PB4  - currently GPIO_Output -> reassign to TIM3_CH1 (M3HSA)
-    PB11 - currently GPIO_Input  -> reassign to GPIO_Output (M3LSB)
-    PB12 - currently GPIO_Input  -> reassign to GPIO_Output (M3LSC)
-    PC13 - not used (remove or leave)
-    PC14 - not used (remove or leave)
-
-  IMPORTANT - TIM3 Partial Remap:
-    PB4=TIM3_CH1 and PB1=TIM3_CH4 require AFIO_MAPR TIM3 partial remap.
-    In CubeMX: assign PB4 -> TIM3_CH1 to trigger the remap prompt.
-    This remap also moves TIM3_CH2 to PB5 (M2LSC) - CH2 must remain unused.

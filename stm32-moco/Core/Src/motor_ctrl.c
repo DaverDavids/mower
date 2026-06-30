@@ -193,6 +193,7 @@ void Motor_Init(void)
             g_motor[m].phase_map[0] = 2;
             g_motor[m].phase_map[1] = 0;
             g_motor[m].phase_map[2] = 1;
+            g_motor[m].commut_offset = 3;
         } else {
             g_motor[m].phase_map[0] = 0;
             g_motor[m].phase_map[1] = 1;
@@ -400,7 +401,13 @@ void Motor_Commutate(uint8_t mid)
         for (uint8_t i = 0; i < 6; i++) {
             if (HALL_ORDER[i] == new_hall) { pos = i; break; }
         }
-        lookup_hall = HALL_ORDER[(pos + ms->commut_offset) % 6];
+        uint8_t effective_pos;
+        if (ms->dir == DIR_FORWARD) {
+            effective_pos = (pos + ms->commut_offset) % 6;
+        } else {
+            effective_pos = (pos + 6 - ms->commut_offset) % 6;
+        }
+        lookup_hall = HALL_ORDER[effective_pos];
     }
 
     CommutStep_t step = table[lookup_hall];
