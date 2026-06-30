@@ -190,9 +190,9 @@ void Motor_Init(void)
         g_motor[m].commut_offset = 0;
         g_motor[m].hall_ticks    = 0;
         if (m == 1) {
-            g_motor[m].phase_map[0] = 2;
+            g_motor[m].phase_map[0] = 1;
             g_motor[m].phase_map[1] = 0;
-            g_motor[m].phase_map[2] = 1;
+            g_motor[m].phase_map[2] = 2;
             g_motor[m].commut_offset = 3;
         } else {
             g_motor[m].phase_map[0] = 0;
@@ -365,9 +365,14 @@ void Motor_Commutate(uint8_t mid)
      * to unstick rotor before handing off to Hall-driven commutation. */
     if (ms->force_steps > 0) {
         ms->force_steps--;
-        if ((ms->force_steps % 10) == 0)
-            ms->force_step_idx = (ms->force_step_idx + 1) % 6;
-        const CommutStep_t *tbl = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
+        if ((ms->force_steps % 10) == 0) {
+            if (ms->dir == DIR_FORWARD)
+                ms->force_step_idx = (ms->force_step_idx + 1) % 6;
+            else
+                ms->force_step_idx = (ms->force_step_idx + 5) % 6;
+        }
+        MotorDir_t eff = (mid == 1) ? (ms->dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) : ms->dir;
+        const CommutStep_t *tbl = (eff == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
         uint8_t forced_hall = HALL_ORDER[ms->force_step_idx];
         CommutStep_t step   = tbl[forced_hall];
         uint8_t f_high      = ms->phase_map[step.high];
@@ -389,7 +394,9 @@ void Motor_Commutate(uint8_t mid)
         return;
     }
 
-    const CommutStep_t *table = (ms->dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
+    MotorDir_t effective_dir = ms->dir;
+    if (mid == 1) effective_dir = (ms->dir == DIR_FORWARD) ? DIR_REVERSE : DIR_FORWARD;
+    const CommutStep_t *table = (effective_dir == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
 
     /* Apply commutation offset: find current hall state in HALL_ORDER,
      * advance by commut_offset steps, use the resulting hall state as
