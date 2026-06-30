@@ -257,7 +257,18 @@ void Motor_Enable(uint8_t motor_id)
     ms->enabled     = 1;
     ms->was_enabled = 1;
     ms->force_steps     = 60;
-    ms->force_step_idx  = 0;
+    {
+        uint8_t cur_hall = Motor_ReadHall(motor_id);
+        uint8_t cur_pos = 0;
+        for (uint8_t i = 0; i < 6; i++) {
+            if (HALL_ORDER[i] == cur_hall) { cur_pos = i; break; }
+        }
+        MotorDir_t eff_dir = (motor_id == 1) ?
+            (g_motor[motor_id].dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) :
+            g_motor[motor_id].dir;
+        ms->force_step_idx = (eff_dir == DIR_FORWARD) ?
+            (cur_pos + 1) % 6 : (cur_pos + 5) % 6;
+    }
     ms->force_step_ticks= 0;
     ms->force_duty      = (ms->duty > 0) ? ms->duty : 200;
     ms->stall_count        = 0;

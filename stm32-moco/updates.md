@@ -1,96 +1,90 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# check mower repository in github and look in the stm32-moco folder. we are implementing a motor controller but I'm having issues. read the project-and-pins.txt file to first understand the architecture. our recent commits to fix motor driving have made it a bit worse... it pulses on startup every time now, so the fixes to start stall didn't help. the timing addition only sometimes works if I spam the backtick key... if I press it once it always seems to say "no data yet need 6+ transitions". but here is some of the data:
+# okay I just now uploaded the changes... it is quite a bit better now. but still it sometimes stalls on startup and takes some pulses until it moves. do you know why?
 
-Status: ENABLED    [E]enable  [D]disable  [S]stop all
+Status: DISABLED   [E]enable  [D]disable  [S]stop all
 Dir:    FWD   [F]forward  [R]reverse
-Duty:   [\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#----]  1200/1440  [Up/Dn]+/-10  [PgU/PgD]+/-100  [0]zero
-Hall:   0x3  HA=0 HB=1 HC=1
-HallSeq: 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3   (9294 ticks)  [C]
-Ticks:  9294   [T]reset
+Duty:   [\#\#\#\#\#\#\#\#\#\#\#---------]   800/1440  [Up/Dn]+/-10  [PgU/PgD]+/-100  [0]zero
+Hall:   0x5  HA=1 HB=0 HC=1
+HallSeq: 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5   (3957 ticks)  [C]clear  [M]monitor
+Ticks:  3957   [T]reset
 PhaseMap: [1,0,2]  perm 3/6  [A]next  [Z]prev
 CommutOff: 4/5  [O]next  [I]prev
 --------------------------------------------------
-All: M1:DIS/F/0/off1  M2:EN/F/1200/off4  M3:DIS/F/0/off5
-GPIO: PA ODR=20FF IDR=3049  PB ODR=0418 IDR=0508
+All: M1:DIS/F/0/off1  M2:DIS/F/800/off4  M3:DIS/F/0/off5
+GPIO: PA ODR=20FF IDR=3069  PB ODR=0410 IDR=0400
 TIM1: MOE=0 CH1 HS=off LS=off CCR=0     CH2 HS=off LS=off CCR=0     CH3 HS=off LS=off CCR=0
 --------------------------------------------------
 [1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10
 [A/Z]phase map  [O/I]commut offset  [T]ticks  [`]timing  [~]clr timing  [C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit
-M2 TIMING intervals(ms): 3 3 4 4 4 3
+Duty 800
 
-M2 TIMING intervals(ms): 3 4 3 4 4 4
+Good — I can see the updated code. The `prev_hall` fix is in  and `force_duty` no longer has the 400 floor. But the remaining startup stall issue is clear from a careful read. Here are the exact causes:
 
-M2 TIMING intervals(ms): 3 5 3 4 4 4
+## Why It Still Pulses/Stalls on Startup
 
-M2 TIMING intervals(ms): 3 4 4 4 3 5
+### Problem 1: `force_step_idx` always starts at 0, ignoring rotor position
 
-I've now read all three source files thoroughly. Here's a detailed breakdown of the bugs I found:
+In `Motor_Enable()` :
+
+```c
+ms->force_step_idx = 0;  // always HALL_ORDER[0] = state 1
+```
+
+`HALL_ORDER[0]` = hall state `1`. But your rotor is sitting at hall state `0x5` when you enable. The forced sequence starts energizing the wrong phase pair for that rotor position — it may be a braking step or a backwards step depending on where hall 1 is relative to hall 5 in your motor's winding geometry. It has to "walk" through potentially several wrong steps before it stumbles onto one that actually produces forward torque, which is why you see the pulses before movement.
+
+**Fix:** Seed `force_step_idx` from the current Hall state at enable time, just like `Motor_CheckStall()` already does for recovery:
+
+```c
+uint8_t current_pos = 0;
+uint8_t current_hall = Motor_ReadHall(motor_id);
+for (uint8_t i = 0; i < 6; i++) {
+    if (HALL_ORDER[i] == current_hall) { current_pos = i; break; }
+}
+// Start one step ahead in the forward direction
+ms->force_step_idx = (current_pos + 1) % 6;
+```
+
+This way the very first forced step is already the correct *next* phase for the rotor's actual position.
 
 ***
 
-## Issue 1: Startup Pulse (The Biggest Problem)
-
-**Root cause: `force_steps` fires unconditionally on every `Motor_Enable()` call, even from stall recovery.**
-
-In `Motor_Enable()` , `force_steps` is hard-set to 60 and `force_duty` is clamped to a minimum of 400. This means every time you press `E`, the motor gets 60ms of open-loop forced commutation at up to 400 duty regardless of rotor state — that's your pulse on startup.
-
-The real problem is the force-start duty is **always** `min(duty, 400)` but with a floor of 400:
+### Problem 2: `step_timeout` is calculated from `force_duty` but the formula assumes full ARR
 
 ```c
-ms->force_duty = (ms->duty > 0 && ms->duty < 400) ? ms->duty : 400;
+uint16_t step_timeout = 20 + (uint16_t)((DUTY_MAX - ms->force_duty) / 72);
 ```
 
-If your duty is above 400 (yours is 1200), this clamps it to exactly 400, not the actual duty. So the motor lurches at 400 for 60ms, then jumps to 1200. That's the pulse.
+With `force_duty = 800` and `DUTY_MAX = 1440`, that's `20 + (640/72)` = `20 + 8` = **28ms per forced step**. At 60 steps that's up to 1.68 seconds of forced open-loop stepping before it gives up. Each wrong step is holding the wrong phase energized for 28ms, which can actually push the rotor backwards or lock it depending on position — multiple wrong steps in sequence cause the "pulse" feel.
 
-**Fix:** Either remove the 400 floor so `force_duty` matches actual duty, or at startup use the actual duty directly:
-
-```c
-ms->force_duty = (ms->duty > 0) ? ms->duty : 200;
-```
-
+This timeout is meant to handle the case where the rotor *doesn't move* (no Hall transition), but 28ms is a long time per wrong step. Reducing it to something like `10 + (DUTY_MAX - ms->force_duty) / 144` at higher duties would make bad steps shorter, though the real fix is Problem 1 above.
 
 ***
 
-## Issue 2: `hall_moved` Check Is Always False During Forced Steps
+### Problem 3: The `hall_moved` exit from forced stepping doesn't account for commut_offset
 
-This is a logic bug in `Motor_Commutate()`  in the force-step block:
+When the Hall moves during forced stepping, the code jumps straight to hall-based commutation . But your motor has `commut_offset = 3` (displayed 4/5). The transition from forced-step indexing to offset-based commutation can cause a phase glitch at the handoff moment — the forced step is using the raw `COMMUT_FWD/REV` table directly, but the normal path applies the offset. These are different table lookups for the same hall state.
 
-```c
-uint8_t hall_moved = (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U);
-```
-
-But `ms->hall_state` is **only updated in the ring buffer section above**, which only runs if `new_hall != ms->hall_state`. So by the time you reach `hall_moved`, `ms->hall_state` has already been updated — meaning `new_hall == ms->hall_state` is now always true, and `hall_moved` is **always 0**. The forced sequence never exits early when the Hall actually moves; it runs all 60 steps every single time.
-
-**Fix:** Save the old hall state before the ring buffer update:
-
-```c
-uint8_t prev_hall = ms->hall_state;
-// ... ring buffer update sets ms->hall_state ...
-// then in the force block:
-uint8_t hall_moved = (new_hall != prev_hall && new_hall != 0U && new_hall != 7U);
-```
-
+This isn't a major issue but it can cause a single hiccup on the transition. Not a fix needed immediately, but worth noting.
 
 ***
 
-## Issue 3: Backtick Timing — "No data yet / need 6+ transitions"
+## The One-Line Core Fix
 
-The backtick key in TUI mode is not mapped in the TUI handler at all . Looking at `tui_handle_key()`, there's no `case '`':`. The backtick does nothing in TUI mode. You're getting the timing output because the motor is generating enough Hall transitions that when you spam it, occasionally you've already accumulated 6+ since the last clear — but the key isn't actually triggering a firmware call, it's just printing whatever the TUI dashboard refresh happens to show at the right moment.
+In `Motor_Enable()`, replace `ms->force_step_idx = 0;` with:
 
-The TUI has no inline timing display — the `M2 TIMING intervals(ms)` output you're seeing is coming from the periodic TUI partial redraw which apparently includes timing. But looking at `tui_draw_motor_panel()`, there's **no timing row rendered there**. So that output is leaking from somewhere else — possibly from `moco.py` , not from the firmware TUI itself.
+```c
+uint8_t cur_hall = Motor_ReadHall(motor_id);
+uint8_t cur_pos = 0;
+for (uint8_t i = 0; i < 6; i++) {
+    if (HALL_ORDER[i] == cur_hall) { cur_pos = i; break; }
+}
+MotorDir_t eff_dir = (motor_id == 1) ?
+    (g_motor[motor_id].dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) :
+    g_motor[motor_id].dir;
+ms->force_step_idx = (eff_dir == DIR_FORWARD) ?
+    (cur_pos + 1) % 6 : (cur_pos + 5) % 6;
+```
 
-**What to do for the backtick:** You either need to add a `case '`':`handler in`tui_handle_key()`that calls`Motor_GetTimingStats()`and sends the result, or switch to CMD mode with`Q`and use the`TIMING 2` command directly.
-
-***
-
-## Summary of Fixes
-
-| Bug | Location | Fix |
-| :-- | :-- | :-- |
-| Startup pulse | `Motor_Enable()` in `motor_ctrl.c` | Remove the `force_duty=400` floor; use actual duty |
-| force-step never exits on Hall move | `Motor_Commutate()` force block | Save `prev_hall` before ring buffer write; use it for `hall_moved` check |
-| Backtick does nothing in TUI | `tui_handle_key()` in `usb_cmd.c` | Add `case '`':`handler or use CMD mode`TIMING 2` |
-
-The timing data you shared (3–5ms intervals, ~3.6ms mean) looks healthy for M2 spinning — the commutation is well-aligned. The issue is purely the startup behavior described above.
+Note you need the same M2 direction flip that the commutate path already applies, otherwise for M2 the forced sequence walks the wrong way. That's the complete fix — the stall recovery code in `Motor_CheckStall()` already does this correctly; `Motor_Enable()` just needs to match it.
 
