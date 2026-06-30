@@ -1,227 +1,96 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# add this new kind of debug to the code so I can utilize it over the serial command and serial UI. describe the changes in code I need to make.  we should be able to characterize the motors definitively
+# check mower repository in github and look in the stm32-moco folder. we are implementing a motor controller but I'm having issues. read the project-and-pins.txt file to first understand the architecture. our recent commits to fix motor driving have made it a bit worse... it pulses on startup every time now, so the fixes to start stall didn't help. the timing addition only sometimes works if I spam the backtick key... if I press it once it always seems to say "no data yet need 6+ transitions". but here is some of the data:
 
-Here are all the changes needed across the three files.
+Status: ENABLED    [E]enable  [D]disable  [S]stop all
+Dir:    FWD   [F]forward  [R]reverse
+Duty:   [\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#----]  1200/1440  [Up/Dn]+/-10  [PgU/PgD]+/-100  [0]zero
+Hall:   0x3  HA=0 HB=1 HC=1
+HallSeq: 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3 2 6 4 5 1 3   (9294 ticks)  [C]
+Ticks:  9294   [T]reset
+PhaseMap: [1,0,2]  perm 3/6  [A]next  [Z]prev
+CommutOff: 4/5  [O]next  [I]prev
+--------------------------------------------------
+All: M1:DIS/F/0/off1  M2:EN/F/1200/off4  M3:DIS/F/0/off5
+GPIO: PA ODR=20FF IDR=3049  PB ODR=0418 IDR=0508
+TIM1: MOE=0 CH1 HS=off LS=off CCR=0     CH2 HS=off LS=off CCR=0     CH3 HS=off LS=off CCR=0
+--------------------------------------------------
+[1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10
+[A/Z]phase map  [O/I]commut offset  [T]ticks  [`]timing  [~]clr timing  [C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit
+M2 TIMING intervals(ms): 3 3 4 4 4 3
 
-## 1. `motor_ctrl.h` — Add Fields to `MotorState_t`
+M2 TIMING intervals(ms): 3 4 3 4 4 4
 
-Find the `MotorState_t` struct and add:
+M2 TIMING intervals(ms): 3 5 3 4 4 4
+
+M2 TIMING intervals(ms): 3 4 4 4 3 5
+
+I've now read all three source files thoroughly. Here's a detailed breakdown of the bugs I found:
+
+***
+
+## Issue 1: Startup Pulse (The Biggest Problem)
+
+**Root cause: `force_steps` fires unconditionally on every `Motor_Enable()` call, even from stall recovery.**
+
+In `Motor_Enable()` , `force_steps` is hard-set to 60 and `force_duty` is clamped to a minimum of 400. This means every time you press `E`, the motor gets 60ms of open-loop forced commutation at up to 400 duty regardless of rotor state — that's your pulse on startup.
+
+The real problem is the force-start duty is **always** `min(duty, 400)` but with a floor of 400:
 
 ```c
-/* Tick interval timing — for commutation quality measurement */
-uint32_t tick_times[6];       // intervals (ms) between last 6 hall transitions
-uint8_t  tick_time_idx;       // ring buffer index (mod 6)
-uint32_t last_hall_time_ms;   // HAL_GetTick() at last transition
-uint32_t hall_period_ms;      // most recent single interval (for velocity)
+ms->force_duty = (ms->duty > 0 && ms->duty < 400) ? ms->duty : 400;
+```
 
-/* Stall recovery state */
-uint8_t  in_stall_recovery;
+If your duty is above 400 (yours is 1200), this clamps it to exactly 400, not the actual duty. So the motor lurches at 400 for 60ms, then jumps to 1200. That's the pulse.
+
+**Fix:** Either remove the 400 floor so `force_duty` matches actual duty, or at startup use the actual duty directly:
+
+```c
+ms->force_duty = (ms->duty > 0) ? ms->duty : 200;
 ```
 
 
 ***
 
-## 2. `motor_ctrl.c` — Three Places to Change
+## Issue 2: `hall_moved` Check Is Always False During Forced Steps
 
-**A. In `Motor_Init()`, zero the new fields:**
+This is a logic bug in `Motor_Commutate()`  in the force-step block:
 
 ```c
-g_motor[m].tick_time_idx    = 0;
-g_motor[m].last_hall_time_ms = 0;
-g_motor[m].hall_period_ms   = 0;
-g_motor[m].in_stall_recovery = 0;
-memset(g_motor[m].tick_times, 0, sizeof(g_motor[m].tick_times));
+uint8_t hall_moved = (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U);
 ```
 
-**B. In `Motor_Commutate()`, in the hall transition block** (where `r->buf[r->head & HALL_RING_MASK] = new_hall` is):
+But `ms->hall_state` is **only updated in the ring buffer section above**, which only runs if `new_hall != ms->hall_state`. So by the time you reach `hall_moved`, `ms->hall_state` has already been updated — meaning `new_hall == ms->hall_state` is now always true, and `hall_moved` is **always 0**. The forced sequence never exits early when the Hall actually moves; it runs all 60 steps every single time.
+
+**Fix:** Save the old hall state before the ring buffer update:
 
 ```c
-if (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U) {
-    HallRing_t *r = &ms->hall_ring;
-    r->buf[r->head & HALL_RING_MASK] = new_hall;
-    r->head++;
-    ms->hall_ticks++;
-    ms->hall_state = new_hall;
-
-    /* NEW: record interval since last transition */
-    uint32_t now = HAL_GetTick();
-    uint32_t interval = now - ms->last_hall_time_ms;
-    if (ms->last_hall_time_ms != 0) {   // skip first transition (no baseline)
-        ms->tick_times[ms->tick_time_idx % 6] = interval;
-        ms->tick_time_idx++;
-        ms->hall_period_ms = interval;
-    }
-    ms->last_hall_time_ms = now;
-}
-```
-
-**C. Add a new public function at the bottom of `motor_ctrl.c`:**
-
-```c
-/*
- * Motor_GetTimingStats()
- * Fills out min, max, mean, and ripple % for the last 6 hall transition
- * intervals for motor `mid`. Returns 0 if fewer than 6 samples collected.
- */
-uint8_t Motor_GetTimingStats(uint8_t mid,
-                              uint32_t *out_min,
-                              uint32_t *out_max,
-                              uint32_t *out_mean,
-                              uint32_t *out_ripple_pct)
-{
-    if (mid >= MOTOR_COUNT) return 0;
-    MotorState_t *ms = &g_motor[mid];
-
-    if (ms->tick_time_idx < 6) return 0;   // not enough samples yet
-
-    uint32_t mn = 0xFFFFFFFF, mx = 0, sum = 0;
-    for (uint8_t i = 0; i < 6; i++) {
-        uint32_t v = ms->tick_times[i];
-        if (v < mn) mn = v;
-        if (v > mx) mx = v;
-        sum += v;
-    }
-    uint32_t mean = sum / 6;
-    uint32_t ripple = (mean > 0) ? ((mx - mn) * 100 / mean) : 0;
-
-    *out_min        = mn;
-    *out_max        = mx;
-    *out_mean       = mean;
-    *out_ripple_pct = ripple;
-    return 1;
-}
-```
-
-**D. Also add this to `motor_ctrl.h` as a declaration:**
-
-```c
-uint8_t Motor_GetTimingStats(uint8_t mid,
-                              uint32_t *out_min,
-                              uint32_t *out_max,
-                              uint32_t *out_mean,
-                              uint32_t *out_ripple_pct);
+uint8_t prev_hall = ms->hall_state;
+// ... ring buffer update sets ms->hall_state ...
+// then in the force block:
+uint8_t hall_moved = (new_hall != prev_hall && new_hall != 0U && new_hall != 7U);
 ```
 
 
 ***
 
-## 3. `usb_cmd.c` — Add Two New Commands
+## Issue 3: Backtick Timing — "No data yet / need 6+ transitions"
 
-Find where other commands are parsed (the big `if/else if strcmp` block) and add:
+The backtick key in TUI mode is not mapped in the TUI handler at all . Looking at `tui_handle_key()`, there's no `case '`':`. The backtick does nothing in TUI mode. You're getting the timing output because the motor is generating enough Hall transitions that when you spam it, occasionally you've already accumulated 6+ since the last clear — but the key isn't actually triggering a firmware call, it's just printing whatever the TUI dashboard refresh happens to show at the right moment.
 
-**Command `TIMING <motor>`** — returns the raw 6 intervals plus stats:
+The TUI has no inline timing display — the `M2 TIMING intervals(ms)` output you're seeing is coming from the periodic TUI partial redraw which apparently includes timing. But looking at `tui_draw_motor_panel()`, there's **no timing row rendered there**. So that output is leaking from somewhere else — possibly from `moco.py` , not from the firmware TUI itself.
 
-```c
-} else if (strncmp(cmd, "TIMING", 6) == 0) {
-    int mid = atoi(cmd + 7) - 1;
-    if (mid < 0 || mid >= MOTOR_COUNT) {
-        cdc_print("ERR bad motor\n");
-    } else {
-        MotorState_t *ms = &g_motor[mid];
-        uint32_t mn, mx, mean, ripple;
-        uint8_t ok = Motor_GetTimingStats(mid, &mn, &mx, &mean, &ripple);
-        if (!ok) {
-            cdc_printf("INFO M%d TIMING: not enough samples (%d/6)\n",
-                       mid+1, ms->tick_time_idx < 6 ? ms->tick_time_idx : 6);
-        } else {
-            cdc_printf("INFO M%d TIMING intervals(ms): %lu %lu %lu %lu %lu %lu\n",
-                       mid+1,
-                       ms->tick_times[0], ms->tick_times[1], ms->tick_times[2],
-                       ms->tick_times[3], ms->tick_times[4], ms->tick_times[5]);
-            cdc_printf("INFO M%d TIMING stats: min=%lu max=%lu mean=%lu ripple=%lu%%\n",
-                       mid+1, mn, mx, mean, ripple);
-        }
-        cdc_print("OK\n");
-    }
-```
-
-**Command `CLEARTIMING <motor>`** — resets the sample buffer so you can start fresh after changing offset:
-
-```c
-} else if (strncmp(cmd, "CLEARTIMING", 11) == 0) {
-    int mid = atoi(cmd + 12) - 1;
-    if (mid < 0 || mid >= MOTOR_COUNT) {
-        cdc_print("ERR bad motor\n");
-    } else {
-        g_motor[mid].tick_time_idx   = 0;
-        g_motor[mid].last_hall_time_ms = 0;
-        g_motor[mid].hall_period_ms  = 0;
-        memset(g_motor[mid].tick_times, 0, sizeof(g_motor[mid].tick_times));
-        cdc_printf("INFO M%d timing cleared\n", mid+1);
-        cdc_print("OK\n");
-    }
-```
-
+**What to do for the backtick:** You either need to add a `case '`':`handler in`tui_handle_key()`that calls`Motor_GetTimingStats()`and sends the result, or switch to CMD mode with`Q`and use the`TIMING 2` command directly.
 
 ***
 
-## 4. `moco.py` — Add to the TUI
+## Summary of Fixes
 
-**A. Add a `T2` key binding** in the `run()` key handler (find the `elif key in (ord('t'), ord('T')):` block and add below it):
+| Bug | Location | Fix |
+| :-- | :-- | :-- |
+| Startup pulse | `Motor_Enable()` in `motor_ctrl.c` | Remove the `force_duty=400` floor; use actual duty |
+| force-step never exits on Hall move | `Motor_Commutate()` force block | Save `prev_hall` before ring buffer write; use it for `hall_moved` check |
+| Backtick does nothing in TUI | `tui_handle_key()` in `usb_cmd.c` | Add `case '`':`handler or use CMD mode`TIMING 2` |
 
-```python
-elif key in (ord('t'), ord('T')):
-    self.reset_ticks()
-elif key == ord('`'):          # backtick = timing query
-    self._query_timing()
-elif key == ord('~'):          # tilde = clear timing
-    self._clear_timing()
-```
-
-**B. Add the two methods to `MocoApp`:**
-
-```python
-def _query_timing(self):
-    mid = self.selected + 1
-    lines = self.moco.send_and_wait(f"TIMING {mid}", timeout=1.0)
-    for line in lines:
-        if "TIMING" in line:
-            self.status_msg = line.replace("INFO ", "")
-            return
-    self.status_msg = "TIMING: no data yet (need 6+ transitions)"
-
-def _clear_timing(self):
-    mid = self.selected + 1
-    self.moco.send_and_wait(f"CLEARTIMING {mid}", timeout=0.5)
-    self.status_msg = f"M{mid} timing cleared."
-```
-
-**C. Update the help line in `draw()`** — find the line with `[A/Z]phase map` and extend it:
-
-```python
-safe_addstr(18, 0,
-    " [A/Z]phase map  [O/I]commut offset  [T]ticks  [`]timing  [~]clr timing  "
-    "[C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit",
-    curses.color_pair(6))
-```
-
-
-***
-
-## How to Use It for Characterization
-
-The workflow for finding the true optimal offset for each direction:
-
-```
-1. Enable motor, let it spin freely at medium duty (~800)
-2. Wait 2 seconds for speed to stabilize
-3. Press ` (backtick) → reads TIMING
-4. Note ripple % 
-5. Press I or O to change CommutOff by 1
-6. Press ~ to clear timing samples
-7. Wait 2 seconds
-8. Press ` again
-9. Repeat steps 5-8 for all 6 offset values
-10. The offset with lowest ripple % is correct
-```
-
-**Interpreting results:**
-
-- **Ripple < 15%** — excellent, offset is well aligned
-- **Ripple 15–40%** — acceptable but not optimal
-- **Ripple > 40%** — wrong offset, alternating strong/weak steps
-- **Alternating pattern** in the 6 intervals (e.g. `8 20 9 19 8 21`) — offset is off by exactly 1 in a specific direction; the slow steps tell you which hall states are weakly energized
-
-Do this independently for FWD and REV to get your two definitive offset values, then hardcode them as defaults in `Motor_Init()`.
+The timing data you shared (3–5ms intervals, ~3.6ms mean) looks healthy for M2 spinning — the commutation is well-aligned. The issue is purely the startup behavior described above.
 

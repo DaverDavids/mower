@@ -5,6 +5,7 @@ outputs for phase and driver control, 9 digital inputs for Hall position
 feedback, and USB CDC for runtime command/debug access.
 
 Firmware: moco v1.3
+Host TUI: moca.py (Python 3.7+, pyserial)
 
 ------------------------------
 ## Pin Assignment (source of truth for all firmware)
@@ -73,11 +74,18 @@ All three timers: Prescaler=0, ARR=1439, 72 MHz clock -> 50 kHz PWM.
   These values are set in Motor_Init() and reflect empirically confirmed
   best settings for each motor. Do not change without re-testing.
 
-  Motor 1 (TIM1):  phase_map=[0,1,2]  commut_offset=0  (offset display: 1/6)
-  Motor 2 (TIM4):  phase_map=[2,0,1]  commut_offset=0  (offset display: 1/6)
-  Motor 3 (TIM3):  phase_map=[0,1,2]  commut_offset=4  (offset display: 5/6)
+  Motor 1 (TIM1):  phase_map=[0,1,2]  commut_offset=0  (offset display: 0/5)
+  Motor 2 (TIM4):  phase_map=[1,0,2]  commut_offset=3  (offset display: 3/5)
+  Motor 3 (TIM3):  phase_map=[0,1,2]  commut_offset=4  (offset display: 4/5)
 
-  Startup forcing: force_steps=120 (120ms), force_duty=min(duty,400).
+  commut_offset is 0-based internally and in the TUI display (range 0-5).
+
+  Startup forcing: Motor_Enable() sets force_steps=60. Each SysTick the
+  firmware steps through HALL_ORDER sequence at a duty-dependent rate
+  (timeout = 20 + (DUTY_MAX - force_duty) / 72 ticks) until the hall sensor
+  moves or all forced steps are consumed. Exits immediately on hall movement.
+  force_duty = max(actual_duty, 400) during forcing.
+
   All offsets and maps are runtime-adjustable via TUI (O/I, A/Z) or
   CMD (COMMUTOFFSET, MAP) without reflashing.
 
@@ -93,20 +101,28 @@ All three timers: Prescaler=0, ARR=1439, 72 MHz clock -> 50 kHz PWM.
      table -> set active high/low channel pair.
   5. phase_map remaps logical CH0/1/2 to physical channels to correct for
      motor wiring order without re-soldering.
-  6. commut_offset (0-5, displayed 1-6) rotates the commutation table by N
-     steps to align energisation with rotor position.
+  6. commut_offset (0-5) rotates the commutation table lookup by N steps in
+     HALL_ORDER space to align energisation with rotor position.
+     Direction-aware: FWD applies +offset, REV applies -offset (mod 6),
+     so one offset value works correctly in both directions.
   7. Motor_Commutate() is called exclusively from SysTick_Handler at 1 kHz.
      main() loop must NOT call it.
-  8. Firmware update: set BOOT0 jumper HIGH, power-cycle, flash with
+  8. DWT cycle counter enabled in Motor_Init() for microsecond timing.
+     Each genuine hall transition records interval in tick_times[6] (ring,
+     per motor). TIMING <n> command reports last 6 intervals + min/max/mean/
+     ripple%. CLEARTIMING <n> resets the ring. Used to tune commut_offset.
+  9. Firmware update: set BOOT0 jumper HIGH, power-cycle, flash with
      STM32CubeProgrammer over USB.
 
 ------------------------------
 ## Architecture & Key Invariants (read this before touching any file)
 
   Files:
-    motor_ctrl.c / motor_ctrl.h  - All commutation, hall reading, ring buffer
-    usb_cmd.c                    - USB CDC command parser and TUI dashboard
+    motor_ctrl.c / motor_ctrl.h  - All commutation, hall reading, ring buffer,
+                                   timing measurement
+    usb_cmd.c                    - USB CDC command parser and response formatter
     main.c                       - SysTick_Handler calls Motor_CommutateAll() at 1 kHz
+    moca.py                      - Python TUI (host side, not compiled into firmware)
 
   Commutation model:
     Motor 1 (TIM1, advanced): high-side = CCR duty, low-side = complementary OCxN.
@@ -130,8 +146,6 @@ All three timers: Prescaler=0, ARR=1439, 72 MHz clock -> 50 kHz PWM.
     Read by HALLMONITOR / HALLSEQ commands in usb_cmd.c.
     Motor_ClearHallRing() resets hall_state to 0.
 
-  Commut offset display: 1-based (internal 0-5, displayed 1-6) throughout
-  TUI and CMD mode. COMMUTOFFSET command accepts and echoes 1-based values.
 
 ------------------------------
 ## Resolved Bugs
@@ -148,4 +162,3 @@ All three timers: Prescaler=0, ARR=1439, 72 MHz clock -> 50 kHz PWM.
     - MOE race fix: __HAL_TIM_MOE_ENABLE() moved before duty==0 guard in
       Motor_Commutate() so MOE is asserted every tick while enabled,
       regardless of when duty is written from main context.
-

@@ -259,7 +259,7 @@ void Motor_Enable(uint8_t motor_id)
     ms->force_steps     = 60;
     ms->force_step_idx  = 0;
     ms->force_step_ticks= 0;
-    ms->force_duty      = (ms->duty > 0 && ms->duty < 400) ? ms->duty : 400;
+    ms->force_duty      = (ms->duty > 0) ? ms->duty : 200;
     ms->stall_count        = 0;
     ms->in_stall_recovery  = 0;
     ms->last_tick_snapshot = ms->hall_ticks;
@@ -349,6 +349,8 @@ void Motor_Commutate(uint8_t mid)
 
     uint8_t new_hall = Motor_ReadHall(mid);
 
+    uint8_t prev_hall = ms->hall_state;
+
     /* Record every genuine Hall transition into the ring buffer. */
     if (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U) {
         HallRing_t *r = &ms->hall_ring;
@@ -394,7 +396,7 @@ void Motor_Commutate(uint8_t mid)
         ms->force_step_ticks++;
 
         uint16_t step_timeout = 20 + (uint16_t)((DUTY_MAX - ms->force_duty) / 72);
-        uint8_t hall_moved = (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U);
+        uint8_t hall_moved = (new_hall != prev_hall && new_hall != 0U && new_hall != 7U);
         uint8_t timed_out  = (ms->force_step_ticks > step_timeout);
 
         if (hall_moved) {

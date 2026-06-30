@@ -673,6 +673,28 @@ static void tui_handle_key(uint8_t key)
         tui_set_status("Hall sequence cleared.");
         break;
 
+    case '`':
+    {
+        uint32_t mn, mx, mean, ripple;
+        if (Motor_GetTimingStats(m, &mn, &mx, &mean, &ripple)) {
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "M%d TIMING intervals(ms): %lu %lu %lu %lu %lu %lu\r\n"
+                "M%d TIMING stats: min=%lu max=%lu mean=%lu ripple=%lu%%\r\n",
+                m+1,
+                (unsigned long)ms->tick_times[0], (unsigned long)ms->tick_times[1],
+                (unsigned long)ms->tick_times[2], (unsigned long)ms->tick_times[3],
+                (unsigned long)ms->tick_times[4], (unsigned long)ms->tick_times[5],
+                m+1, (unsigned long)mn, (unsigned long)mx, (unsigned long)mean, (unsigned long)ripple);
+        } else {
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "M%d TIMING: not enough samples (%d/6)\r\n",
+                m+1, ms->tick_time_idx < 6 ? ms->tick_time_idx : 6);
+        }
+        USBCMD_Send(tx_scratch);
+        tui_set_status("Timing requested.");
+        break;
+    }
+
     case 'q': case 'Q':
         rx_flush();
         g_mode = MODE_CMD;

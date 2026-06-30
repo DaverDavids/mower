@@ -5,7 +5,7 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:125:26:find_
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:210:6:USBCMD_OnReceive	20	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:222:6:USBCMD_Send	16	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:289:13:tui_erase_line	0	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:557:13:tui_handle_key	32	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:557:13:tui_handle_key	80	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:283:13:tui_goto.constprop	16	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:517:13:tui_draw_status	8	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:328:13:tui_draw_sep	8	static
@@ -15,5 +15,5 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:438:13:tui_d
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:334:13:tui_draw_motor_panel	56	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:312:13:tui_draw_tabs	16	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:525:13:tui_full_redraw	8	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1232:6:USBCMD_Init	8	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1244:6:USBCMD_Process	112	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1294:6:USBCMD_Init	8	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1306:6:USBCMD_Process	128	static
