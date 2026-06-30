@@ -461,12 +461,7 @@ void Motor_Commutate(uint8_t mid)
         for (uint8_t i = 0; i < 6; i++) {
             if (HALL_ORDER[i] == new_hall) { pos = i; break; }
         }
-        uint8_t effective_pos;
-        if (ms->dir == DIR_FORWARD) {
-            effective_pos = (pos + ms->commut_offset) % 6;
-        } else {
-            effective_pos = (pos + 6 - ms->commut_offset) % 6;
-        }
+        uint8_t effective_pos = (pos + ms->commut_offset) % 6;
         lookup_hall = HALL_ORDER[effective_pos];
     }
 
