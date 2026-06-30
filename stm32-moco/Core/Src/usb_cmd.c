@@ -364,9 +364,9 @@ static void tui_draw_motor_panel(void)
     tui_goto(TUI_ROW_HALL, 1); tui_erase_line();
     uint8_t h = Motor_ReadHall(m);
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " Hall:   \x1b[1;36m0x%X\x1b[0m  HA=%u HB=%u HC=%u  ticks=\x1b[36m%ld\x1b[0m  %s",
+        " Hall:   \x1b[1;36m0x%X\x1b[0m  HA=%u HB=%u HC=%u  ticks=\x1b[36m%ld\x1b[0m  period=\x1b[36m%u\x1b[0mms  %s",
         h, (h>>2)&1, (h>>1)&1, h&1,
-        (long)ms->hall_ticks,
+        (long)ms->hall_ticks, ms->hall_period_ms,
         (h == 0 || h == 7) ? "\x1b[1;31m[FAULT]\x1b[0m" : "");
     send_raw(tx_scratch);
 
@@ -397,8 +397,8 @@ static void tui_draw_motor_panel(void)
     /* CommStep / Ticks */
     tui_goto(TUI_ROW_TICKS, 1); tui_erase_line();
     snprintf(tx_scratch, sizeof(tx_scratch),
-        " Ticks:  \x1b[36m%ld\x1b[0m  \x1b[33m[T]\x1b[0mreset",
-        (long)ms->hall_ticks);
+        " Ticks:  \x1b[36m%ld\x1b[0m  est=\x1b[36m%ld\x1b[0m  period=\x1b[36m%u\x1b[0mms  \x1b[33m[T]\x1b[0mreset",
+        (long)ms->hall_ticks, (long)ms->estimated_ticks, ms->hall_period_ms);
     send_raw(tx_scratch);
 
     /* Phase map */
@@ -820,9 +820,10 @@ static void dispatch(char *line)
         for(uint8_t m=0;m<MOTOR_COUNT;m++){
             MotorState_t *ms=&g_motor[m];
             snprintf(tx_scratch,sizeof(tx_scratch),
-                "INFO M%d: en=%d dir=%s duty=%u hall=0x%X step=%u offset=%u ticks=%ld map=[%d,%d,%d]\r\n",
+                "INFO M%d: en=%d dir=%s duty=%u hall=0x%X step=%u offset=%u ticks=%ld e=%ld period=%u map=[%d,%d,%d]\r\n",
                 m+1,ms->enabled,ms->dir==DIR_FORWARD?"FWD":"REV",ms->duty,
                 ms->hall_state,ms->commut_step,ms->commut_offset + 1,(long)ms->hall_ticks,
+                (long)ms->estimated_ticks, ms->hall_period_ms,
                 ms->phase_map[0],ms->phase_map[1],ms->phase_map[2]);
             USBCMD_Send(tx_scratch);
         }
@@ -1184,8 +1185,49 @@ static void dispatch(char *line)
     } else if (strcmp(tok, "RAW") == 0) {
         USBCMD_Send("OK already in CMD mode\r\n");
 
+    } else if (strcmp(tok, "TIMING") == 0) {
+        char *s_mid = strtok(NULL, " \t");
+        if (!s_mid) { USBCMD_Send("ERR USAGE: TIMING <motor 1-3>\r\n"); return; }
+        int mid = atoi(s_mid) - 1;
+        if (mid < 0 || mid >= MOTOR_COUNT) { USBCMD_Send("ERR INVALID_ARG\r\n"); return; }
+        MotorState_t *tms = &g_motor[mid];
+        uint32_t mn, mx, mean, ripple;
+        uint8_t ok = Motor_GetTimingStats((uint8_t)mid, &mn, &mx, &mean, &ripple);
+        if (!ok) {
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "INFO M%d TIMING: not enough samples (%d/6)\r\n",
+                mid+1, tms->tick_time_idx < 6 ? tms->tick_time_idx : 6);
+            USBCMD_Send(tx_scratch);
+        } else {
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "INFO M%d TIMING intervals(ms): %lu %lu %lu %lu %lu %lu\r\n",
+                mid+1,
+                (unsigned long)tms->tick_times[0], (unsigned long)tms->tick_times[1],
+                (unsigned long)tms->tick_times[2], (unsigned long)tms->tick_times[3],
+                (unsigned long)tms->tick_times[4], (unsigned long)tms->tick_times[5]);
+            USBCMD_Send(tx_scratch);
+            snprintf(tx_scratch, sizeof(tx_scratch),
+                "INFO M%d TIMING stats: min=%lu max=%lu mean=%lu ripple=%lu%%\r\n",
+                mid+1, (unsigned long)mn, (unsigned long)mx, (unsigned long)mean, (unsigned long)ripple);
+            USBCMD_Send(tx_scratch);
+        }
+        USBCMD_Send("OK TIMING\r\n");
+
+    } else if (strcmp(tok, "CLEARTIMING") == 0) {
+        char *s_mid = strtok(NULL, " \t");
+        if (!s_mid) { USBCMD_Send("ERR USAGE: CLEARTIMING <motor 1-3>\r\n"); return; }
+        int mid = atoi(s_mid) - 1;
+        if (mid < 0 || mid >= MOTOR_COUNT) { USBCMD_Send("ERR INVALID_ARG\r\n"); return; }
+        g_motor[mid].tick_time_idx    = 0;
+        g_motor[mid].last_hall_time_ms = 0;
+        g_motor[mid].hall_period_ms   = 0;
+        memset(g_motor[mid].tick_times, 0, sizeof(g_motor[mid].tick_times));
+        snprintf(tx_scratch, sizeof(tx_scratch), "INFO M%d timing cleared\r\n", mid+1);
+        USBCMD_Send(tx_scratch);
+        USBCMD_Send("OK CLEARTIMING\r\n");
+
     } else if (strcmp(tok, "HELP") == 0) {
-        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET\r\n");
+        USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET TIMING CLEARTIMING\r\n");
         USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
         USBCMD_Send("INFO Debug: TIM1REGS\r\n");
         USBCMD_Send("INFO Test:  PINTEST <name> <0|1>  PINTESTALL\r\n");
@@ -1193,7 +1235,6 @@ static void dispatch(char *line)
         USBCMD_Send("INFO         PINTESTALL reads IDR of all pins without driving anything\r\n");
         USBCMD_Send("INFO System: VERSION  HELP  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
         USBCMD_Send("OK HELP\r\n");
-
     } else {
         snprintf(tx_scratch,sizeof(tx_scratch),"ERR UNKNOWN_CMD: %s\r\n",tok);
         USBCMD_Send(tx_scratch);

@@ -643,6 +643,20 @@ class MocoApp:
             self.motors[self.selected].ticks = 0
             self.status_msg = "Ticks reset."
 
+    def _query_timing(self):
+        mid = self.selected + 1
+        lines = self.moco.send_and_wait(f"TIMING {mid}", timeout=1.0)
+        for line in lines:
+            if "TIMING" in line:
+                self.status_msg = line.replace("INFO ", "")
+                return
+        self.status_msg = "TIMING: no data yet (need 6+ transitions)"
+
+    def _clear_timing(self):
+        mid = self.selected + 1
+        self.moco.send_and_wait(f"CLEARTIMING {mid}", timeout=0.5)
+        self.status_msg = f"M{mid} timing cleared."
+
     def clear_hallmon(self):
         self._cmd(f"CLEARRING {self.selected+1}")
         self.motors[self.selected].hallmon.clear()
@@ -843,7 +857,8 @@ class MocoApp:
             " [1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10",
             curses.color_pair(6))
         safe_addstr(18, 0,
-            " [A/Z]phase map  [O/I]commut offset  [T]ticks  [C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit",
+            " [A/Z]phase map  [O/I]commut offset  [T]ticks  [`]timing  [~]clr timing  "
+            "[C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit",
             curses.color_pair(6))
         safe_addstr(19, 0, f" {self.status_msg}", curses.color_pair(4))
         scr.refresh()
@@ -925,6 +940,10 @@ class MocoApp:
             elif key in (ord('o'), ord('O')): self.next_offset()
             elif key in (ord('i'), ord('I')): self.prev_offset()
             elif key in (ord('t'), ord('T')): self.reset_ticks()
+            elif key == 96:      # backtick ` — timing query
+                self._query_timing()
+            elif key == 126:     # tilde ~ — clear timing
+                self._clear_timing()
             elif key in (ord('c'), ord('C')): self.clear_hallmon()
             elif key in (ord('m'), ord('M')):
                 self._hallmon_mode = True
@@ -933,7 +952,8 @@ class MocoApp:
             elif key in (ord('h'), ord('H')):
                 self.status_msg = (
                     "1/2/3 motor | E/D en/dis | F/R dir | Up/Dn duty | "
-                    "A/Z map | O/I offset | T ticks | C hall | M monitor | P pins | S stop | Q quit"
+                    "A/Z map | O/I offset | T ticks | ` timing | ~ clr timing | "
+                    "C hall | M monitor | P pins | S stop | Q quit"
                 )
 
         self._running = False

@@ -129,6 +129,17 @@ int main(void)
     /* Process any pending USB CDC commands from the Atomic Pi */
     USBCMD_Process();
 
+    /* Stall detection – check every ~10ms */
+    {
+        static uint32_t last_sc = 0;
+        uint32_t now = HAL_GetTick();
+        if (now - last_sc >= 10) {
+            last_sc = now;
+            for (uint8_t m = 0; m < MOTOR_COUNT; m++)
+                Motor_CheckStall(m, now);
+        }
+    }
+
   }
   /* USER CODE END 3 */
 }

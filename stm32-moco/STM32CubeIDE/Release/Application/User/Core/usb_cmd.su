@@ -15,5 +15,5 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:438:13:tui_d
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:334:13:tui_draw_motor_panel	56	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:312:13:tui_draw_tabs	16	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:525:13:tui_full_redraw	8	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1231:6:USBCMD_Init	8	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1243:6:USBCMD_Process	104	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1232:6:USBCMD_Init	8	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/usb_cmd.c:1244:6:USBCMD_Process	112	static

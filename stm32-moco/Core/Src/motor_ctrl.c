@@ -199,6 +199,16 @@ void Motor_Init(void)
             g_motor[m].phase_map[1] = 1;
             g_motor[m].phase_map[2] = 2;
         }
+        g_motor[m].force_step_ticks   = 0;
+        g_motor[m].stall_count        = 0;
+        g_motor[m].last_tick_snapshot = 0;
+        g_motor[m].last_tick_time     = 0;
+        g_motor[m].last_hall_time_ms  = 0;
+        g_motor[m].hall_period_ms     = 0;
+        g_motor[m].tick_time_idx      = 0;
+        g_motor[m].in_stall_recovery  = 0;
+        g_motor[m].estimated_ticks    = 0;
+        memset(g_motor[m].tick_times, 0, sizeof(g_motor[m].tick_times));
         memset(&g_motor[m].hall_ring, 0, sizeof(HallRing_t));
 
         HAL_TIM_PWM_Start(MOTOR_HW[m].htim, TIM_CHANNEL_1);
@@ -246,9 +256,15 @@ void Motor_Enable(uint8_t motor_id)
     MotorState_t *ms = &g_motor[motor_id];
     ms->enabled     = 1;
     ms->was_enabled = 1;
-    ms->force_steps    = 120;
-    ms->force_step_idx = 0;
-    ms->force_duty     = (ms->duty > 0 && ms->duty < 400) ? ms->duty : 400;
+    ms->force_steps     = 60;
+    ms->force_step_idx  = 0;
+    ms->force_step_ticks= 0;
+    ms->force_duty      = (ms->duty > 0 && ms->duty < 400) ? ms->duty : 400;
+    ms->stall_count        = 0;
+    ms->in_stall_recovery  = 0;
+    ms->last_tick_snapshot = ms->hall_ticks;
+    ms->estimated_ticks    = ms->hall_ticks;
+    ms->last_tick_time     = HAL_GetTick();
     if (MOTOR_HW[motor_id].is_advanced) {
         MOTOR_HW[motor_id].htim->Instance->CCER &= ~(
             TIM1_CCER_CC1E|TIM1_CCER_CC1NE|
@@ -338,7 +354,19 @@ void Motor_Commutate(uint8_t mid)
         HallRing_t *r = &ms->hall_ring;
         r->buf[r->head & HALL_RING_MASK] = new_hall;
         r->head++;
-        ms->hall_ticks++;
+        if (ms->dir == DIR_FORWARD)
+            ms->hall_ticks++;
+        else
+            ms->hall_ticks--;
+        ms->estimated_ticks = ms->hall_ticks;
+        uint32_t now = HAL_GetTick();
+        uint32_t interval = now - ms->last_hall_time_ms;
+        if (ms->last_hall_time_ms != 0U) {
+            ms->tick_times[ms->tick_time_idx % 6] = interval;
+            ms->tick_time_idx++;
+            ms->hall_period_ms = (uint16_t)interval;
+        }
+        ms->last_hall_time_ms = now;
         ms->hall_state = new_hall;
     }
 
@@ -361,15 +389,27 @@ void Motor_Commutate(uint8_t mid)
 
     if (ms->duty == 0) return;
 
-    /* Forced startup stepping — cycle through Hall order at low duty
-     * to unstick rotor before handing off to Hall-driven commutation. */
+    /* Forced startup stepping — duty-dependent timeout, exit on hall move */
     if (ms->force_steps > 0) {
-        ms->force_steps--;
-        if ((ms->force_steps % 10) == 0) {
-            if (ms->dir == DIR_FORWARD)
+        ms->force_step_ticks++;
+
+        uint16_t step_timeout = 20 + (uint16_t)((DUTY_MAX - ms->force_duty) / 72);
+        uint8_t hall_moved = (new_hall != ms->hall_state && new_hall != 0U && new_hall != 7U);
+        uint8_t timed_out  = (ms->force_step_ticks > step_timeout);
+
+        if (hall_moved) {
+            ms->force_step_ticks = 0;
+            ms->force_steps      = 0;
+        } else if (timed_out) {
+            ms->force_step_ticks = 0;
+            ms->force_steps--;
+            if (ms->dir == DIR_FORWARD) {
                 ms->force_step_idx = (ms->force_step_idx + 1) % 6;
-            else
+                ms->estimated_ticks++;
+            } else {
                 ms->force_step_idx = (ms->force_step_idx + 5) % 6;
+                ms->estimated_ticks--;
+            }
         }
         MotorDir_t eff = (mid == 1) ? (ms->dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) : ms->dir;
         const CommutStep_t *tbl = (eff == DIR_FORWARD) ? COMMUT_FWD : COMMUT_REV;
@@ -461,4 +501,74 @@ void Motor_CommutateAll(void)
     for (uint8_t m = 0; m < MOTOR_COUNT; m++) {
         Motor_Commutate(m);
     }
+}
+
+void Motor_CheckStall(uint8_t mid, uint32_t now_ms)
+{
+    if (mid >= MOTOR_COUNT) return;
+    MotorState_t *ms = &g_motor[mid];
+    if (!ms->enabled || ms->duty == 0) return;
+    if (ms->force_steps > 0) {
+        ms->last_tick_snapshot = ms->hall_ticks;
+        ms->last_tick_time     = now_ms;
+        return;
+    }
+
+    if (ms->hall_ticks != ms->last_tick_snapshot) {
+        ms->last_tick_snapshot = ms->hall_ticks;
+        ms->last_tick_time     = now_ms;
+        ms->stall_count        = 0;
+        ms->in_stall_recovery  = 0;
+        return;
+    }
+
+    uint32_t stall_ms = now_ms - ms->last_tick_time;
+    if (stall_ms > 80) {
+        ms->stall_count++;
+        if (ms->stall_count <= 6) {
+            ms->in_stall_recovery = 1;
+            uint8_t current_pos = 0;
+            for (uint8_t i = 0; i < 6; i++) {
+                if (HALL_ORDER[i] == ms->hall_state) { current_pos = i; break; }
+            }
+            if (ms->dir == DIR_FORWARD)
+                ms->force_step_idx = (current_pos + 1) % 6;
+            else
+                ms->force_step_idx = (current_pos + 5) % 6;
+
+            ms->force_steps      = 15;
+            ms->force_step_ticks = 0;
+            ms->force_duty       = ms->duty < 700 ? 700 : ms->duty;
+            ms->last_tick_time   = now_ms;
+        } else {
+            Motor_Disable(mid);
+        }
+    }
+}
+
+uint8_t Motor_GetTimingStats(uint8_t mid,
+                              uint32_t *out_min,
+                              uint32_t *out_max,
+                              uint32_t *out_mean,
+                              uint32_t *out_ripple_pct)
+{
+    if (mid >= MOTOR_COUNT) return 0;
+    MotorState_t *ms = &g_motor[mid];
+    if (ms->tick_time_idx < 6) return 0;
+
+    uint32_t mn = 0xFFFFFFFF, mx = 0, sum = 0;
+    for (uint8_t i = 0; i < 6; i++) {
+        uint32_t v = ms->tick_times[i];
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+        sum += v;
+    }
+    uint32_t mean = sum / 6;
+    uint32_t ripple = (mean > 0) ? ((mx - mn) * 100 / mean) : 0;
+
+    *out_min        = mn;
+    *out_max        = mx;
+    *out_mean       = mean;
+    *out_ripple_pct = ripple;
+    return 1;
 }

@@ -72,6 +72,16 @@ typedef struct {
     int32_t    hall_ticks;       /* Cumulative Hall transition counter    */
     uint8_t    phase_map[3];     /* phase_map[logical] = physical_channel */
     HallRing_t hall_ring;        /* ISR-speed transition log              */
+    uint32_t   force_step_ticks; /* SysTick counter for force-step timeout*/
+    uint8_t    stall_count;      /* consecutive stall detections          */
+    int32_t    last_tick_snapshot;/* hall_ticks snapshot for stall detect */
+    uint32_t   last_tick_time;   /* SysTick time of last hall transition  */
+    uint32_t   tick_times[6];    /* intervals (ms) of last 6 hall trans   */
+    uint8_t    tick_time_idx;     /* ring index into tick_times            */
+    uint32_t   last_hall_time_ms;/* timestamp of last transition          */
+    uint16_t   hall_period_ms;   /* ms between last two transitions       */
+    uint8_t    in_stall_recovery;/* flag: currently in a stall retry burst*/
+    int32_t    estimated_ticks;  /* hall_ticks + estimated unconfirmed steps*/
 } MotorState_t;
 
 /* Global state array – accessible from usb_cmd.c for debug reads */
@@ -90,6 +100,7 @@ void Motor_Disable(uint8_t motor_id);
 /* ----- Commutation (call from SysTick ISR only, NOT main loop) --------- */
 void Motor_Commutate(uint8_t motor_id);
 void Motor_CommutateAll(void);
+void Motor_CheckStall(uint8_t motor_id, uint32_t now_ms);
 
 /* ----- Hall feedback --------------------------------------------------- */
 uint8_t Motor_ReadHall(uint8_t motor_id);   /* Returns 3-bit Hall state  */
@@ -102,5 +113,12 @@ void Motor_SetPhaseMap(uint8_t motor_id, uint8_t p0, uint8_t p1, uint8_t p2);
 
 /* ----- Commutation table offset (0-5, rotates lookup by N steps) ------- */
 void Motor_SetCommutOffset(uint8_t motor_id, uint8_t offset);
+
+/* ----- Timing analysis ------------------------------------------------- */
+uint8_t Motor_GetTimingStats(uint8_t mid,
+                              uint32_t *out_min,
+                              uint32_t *out_max,
+                              uint32_t *out_mean,
+                              uint32_t *out_ripple_pct);
 
 #endif /* MOTOR_CTRL_H */
