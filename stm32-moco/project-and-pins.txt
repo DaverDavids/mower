@@ -4,6 +4,8 @@ STM32F103C8T6 Blue Pill development board. The system uses 18 digital
 outputs for phase and driver control, 9 digital inputs for Hall position
 feedback, and USB CDC for runtime command/debug access.
 
+Firmware: moco v1.3
+
 ------------------------------
 ## Pin Assignment (source of truth for all firmware)
 
@@ -41,109 +43,129 @@ feedback, and USB CDC for runtime command/debug access.
 | SWDIO             | A13           | SYS_JTMS-SWDIO       | SYS       | SWD debug                      |
 | SWCLK             | A14           | SYS_JTCK-SWCLK       | SYS       | SWD debug                      |
 
+BKIN pin is NOT wired. Break input is disabled in firmware (TIM_BREAK_DISABLE).
+
 ------------------------------
 ## Timer Configuration
 
-All three timers: Prescaler=0, ARR=1439, 72 MHz clock → 50 kHz PWM.
+All three timers: Prescaler=0, ARR=1439, 72 MHz clock -> 50 kHz PWM.
 
-  TIM1  – Motor 1, advanced timer.  Channels CH1/CH2/CH3 + CH1N/CH2N/CH3N.
-           Hardware dead-time via HAL_TIMEx_ConfigBreakDeadTime.
-           Pull-down resistors (10kΩ) on all six Motor 1 pins (A8-A10, B13-B15)
+  TIM1  - Motor 1, advanced timer.  Channels CH1/CH2/CH3 + CH1N/CH2N/CH3N.
+           Hardware dead-time via HAL_TIMEx_ConfigBreakDeadTime (DTG=0x32, ~700ns).
+           BDTR: OSSR=ENABLE, OSSI=ENABLE, AutomaticOutput=DISABLE.
+           MOE must be explicitly set via __HAL_TIM_MOE_ENABLE() each SysTick
+           while motor is enabled (see Motor_Commutate).
+           Pull-down resistors (10k) on all six Motor 1 pins (A8-A10, B13-B15)
            to prevent shoot-through on boot/flash.
 
-  TIM4  – Motor 2, general-purpose.  Channels CH1(B6) / CH2(B7) / CH3(B8).
+  TIM4  - Motor 2, general-purpose.  Channels CH1(B6) / CH2(B7) / CH3(B8).
            Low-side controlled by GPIO enables: A15, B3, B5.
            Hardware driver prevents shoot-through; no dead-time needed in FW.
 
-  TIM3  – Motor 3, general-purpose.  Channels CH1(B4) / CH3(B0) / CH4(B1).
+  TIM3  - Motor 3, general-purpose.  Channels CH1(B4) / CH3(B0) / CH4(B1).
            Low-side controlled by GPIO enables: B9, B11, B12.
+           CH2 intentionally unused (PB5 is M2LSC).
            Hardware driver prevents shoot-through; no dead-time needed in FW.
+
+------------------------------
+## Motor Calibration Defaults
+
+  These values are set in Motor_Init() and reflect empirically confirmed
+  best settings for each motor. Do not change without re-testing.
+
+  Motor 1 (TIM1):  phase_map=[0,1,2]  commut_offset=0  (offset display: 1/6)
+  Motor 2 (TIM4):  phase_map=[2,0,1]  commut_offset=0  (offset display: 1/6)
+  Motor 3 (TIM3):  phase_map=[0,1,2]  commut_offset=4  (offset display: 5/6)
+
+  Startup forcing: force_steps=120 (120ms), force_duty=min(duty,400).
+  All offsets and maps are runtime-adjustable via TUI (O/I, A/Z) or
+  CMD (COMMUTOFFSET, MAP) without reflashing.
 
 ------------------------------
 ## Implementation Notes
 
-  1. All PWM channels initialised with Pulse=0.  Timers start but outputs
+  1. All PWM channels initialised with Pulse=0. Timers start but outputs
      stay LOW until Motor_Enable() is called.
-  2. Motor_SafeAll() zeroes all PWM and GPIO enables immediately – safe
-     to call from any context.
-  3. Hall inputs use internal pull-ups.  Unconnected Halls will read HIGH
+  2. Motor_SafeAll() zeroes all PWM and GPIO enables immediately.
+  3. Hall inputs use internal pull-ups. Unconnected Halls read HIGH
      (state 0b111 = invalid, motor stays stopped).
-  4. 6-step commutation: poll Hall state → index COMMUT_FWD/REV table →
-     set active high/low channel pair.
-  5. Phase map (MAP command) remaps logical CH0/1/2 to physical channels
-     to correct for motor wiring order without re-soldering.
-  6. Firmware update: set BOOT0 jumper HIGH, power-cycle, flash with
+  4. 6-step commutation: poll Hall state each SysTick -> index COMMUT_FWD/REV
+     table -> set active high/low channel pair.
+  5. phase_map remaps logical CH0/1/2 to physical channels to correct for
+     motor wiring order without re-soldering.
+  6. commut_offset (0-5, displayed 1-6) rotates the commutation table by N
+     steps to align energisation with rotor position.
+  7. Motor_Commutate() is called exclusively from SysTick_Handler at 1 kHz.
+     main() loop must NOT call it.
+  8. Firmware update: set BOOT0 jumper HIGH, power-cycle, flash with
      STM32CubeProgrammer over USB.
-
-------------------------------
-## CubeMX IOC – Required Changes
-
-The current stm32-moco.ioc does NOT match this wiring.  Before regenerating
-code, make the following changes in STM32CubeMX:
-
-  Pins to REMOVE current assignment:
-    PA6  – currently TIM3_CH1  → reassign to GPIO_Input (M3HA)
-    PA7  – currently TIM3_CH2  → reassign to GPIO_Input (M3HB)
-    PB0  – currently TIM3_CH3  → reassign to TIM3_CH3 (keep, correct)
-    PB1  – currently GPIO_Output → reassign to TIM3_CH4 (M3HSC)
-    PB4  – currently GPIO_Output → reassign to TIM3_CH1 (M3HSA, needs AFIO partial remap)
-    PB6  – currently TIM4_CH1  → keep as TIM4_CH1 (M2HSA) - correct
-    PB7  – currently TIM4_CH2  → keep as TIM4_CH2 (M2HSB) - correct
-    PB8  – currently TIM4_CH3  → keep as TIM4_CH3 (M2HSC) - correct
-    PB11 – currently GPIO_Input → reassign to GPIO_Output (M3LSB)
-    PB12 – currently GPIO_Input → reassign to GPIO_Output (M3LSC)
-    PC13 – currently GPIO_Output → not used (remove or leave)
-    PC14 – currently GPIO_Output → not used (remove or leave)
-
-  Summary of IOC changes needed:
-    PA6   GPIO_Input  PULLUP   (M3HA)
-    PA7   GPIO_Input  PULLUP   (M3HB)
-    PB1   TIM3_CH4             (M3HSC – requires TIM3 partial remap in AFIO)
-    PB4   TIM3_CH1             (M3HSA – requires TIM3 partial remap in AFIO)
-    PB11  GPIO_Output          (M3LSB)
-    PB12  GPIO_Output          (M3LSC)
-    PC13  reset to default (no function)
-    PC14  reset to default (no function)
-
-  IMPORTANT – TIM3 Partial Remap:
-    PB4=TIM3_CH1 and PB1=TIM3_CH4 require AFIO_MAPR TIM3 partial remap.
-    In CubeMX: Pinout → PB4 → TIM3_CH1 will prompt you to enable the remap.
-    This remap also moves TIM3_CH2 to PB5 – but PB5 is M2LSC (GPIO output).
-    To avoid conflict, Motor 3 only uses CH1(B4), CH3(B0), CH4(B1);
-    CH2 is intentionally unused.
-
 
 ------------------------------
 ## Architecture & Key Invariants (read this before touching any file)
 
   Files:
-    motor_ctrl.c / motor_ctrl.h  – All commutation, hall reading, ring buffer
-    usb_cmd.c                    – USB CDC command parser and all debug monitors
-    main.c                       – main loop calls Motor_CommutateAll(), SysTick ISR also calls it (KNOWN BUG – must only call from one place)
+    motor_ctrl.c / motor_ctrl.h  - All commutation, hall reading, ring buffer
+    usb_cmd.c                    - USB CDC command parser and TUI dashboard
+    main.c                       - SysTick_Handler calls Motor_CommutateAll() at 1 kHz
 
   Commutation model:
     Motor 1 (TIM1, advanced): high-side = CCR duty, low-side = complementary OCxN.
-      CCER must be explicitly managed per step – zeroing CCR does NOT disable OCxN.
-      Only the active high channel (OCx) and active low channel (OCxN) should have CCER bits set; all others must be cleared each step.
-    Motor 2/3 (TIM4/TIM3, general-purpose): high-side = CCR duty, low-side = GPIO enable.
-      No complementary outputs. GPIO low-side driven directly.
+      CCER must be explicitly managed per step - all CCxE/CCxNE bits cleared
+      each step, then only the active pair enabled.
+      MOE asserted unconditionally on every SysTick while enabled (before
+      duty==0 guard) to prevent race between Motor_Enable() and SysTick.
+    Motor 2/3 (TIM4/TIM3, general-purpose): high-side = CCR duty,
+      low-side = GPIO enable. No complementary outputs.
 
   BDTR (TIM1 only) required settings:
     OSSR = ENABLE   (pin drives LOW when channel disabled, not hi-Z)
     OSSI = ENABLE   (same for IDLE state)
-    AutomaticOutput = DISABLE  (prevents hardware from re-enabling MOE after Motor_SafeAll())
-    Current Motor_Init() sets all three wrong – see known bugs.
+    AutomaticOutput = DISABLE  (MOE only recovers via explicit MOE_ENABLE)
+    Set in MX_TIM1_Init USER CODE section.
 
   Hall ring buffer (HallRing_t):
-    64-entry circular buffer in each MotorState_t.
-    Written by Motor_Commutate() on every genuine hall transition (dedup by last state, invalid states 0 and 7 skipped).
-    Read/drained by HALLMONITOR command in usb_cmd.c.
-    Motor_ClearHallRing() also resets hall_state to 0 so first transition after clear is always captured.
+    256-entry circular buffer per motor in MotorState_t.
+    Written by Motor_Commutate() on every genuine Hall transition
+    (deduped by last state; invalid states 0 and 7 skipped).
+    Read by HALLMONITOR / HALLSEQ commands in usb_cmd.c.
+    Motor_ClearHallRing() resets hall_state to 0.
 
-  Fixed bugs (resolved 2026-06-27):
-    1. Motor_CommutateAll() is now called exclusively from SysTick_Handler.
-       main() while-loop no longer calls it (race condition eliminated).
-    2. TIM1 CCER: all CCxE/CCxNE bits are cleared each step before enabling
-       only the active high/low pair (shoot-through eliminated).
-    3. Motor_Init() BDTR now sets OSSR=ENABLE, OSSI=ENABLE,
-       AutomaticOutput=DISABLE (Bug 3 fix applied in MX_TIM1_Init USER CODE).
+  Commut offset display: 1-based (internal 0-5, displayed 1-6) throughout
+  TUI and CMD mode. COMMUTOFFSET command accepts and echoes 1-based values.
+
+------------------------------
+## Resolved Bugs
+
+  2026-06-27:
+    - Motor_CommutateAll() moved exclusively to SysTick_Handler (1 kHz).
+      main() loop no longer calls it (race condition eliminated).
+    - TIM1 CCER: all CCxE/CCxNE bits cleared each step before enabling
+      only the active high/low pair (shoot-through eliminated).
+    - TIM1 BDTR: OSSR=ENABLE, OSSI=ENABLE, AutomaticOutput=DISABLE
+      set correctly in MX_TIM1_Init USER CODE.
+
+  2026-06-29:
+    - MOE race fix: __HAL_TIM_MOE_ENABLE() moved before duty==0 guard in
+      Motor_Commutate() so MOE is asserted every tick while enabled,
+      regardless of when duty is written from main context.
+
+------------------------------
+## CubeMX IOC – Required Changes
+
+The current stm32-moco.ioc does NOT match this wiring. Before regenerating
+code, make the following changes in STM32CubeMX:
+
+  Pins to REMOVE current assignment:
+    PA6  - currently TIM3_CH1  -> reassign to GPIO_Input (M3HA)
+    PA7  - currently TIM3_CH2  -> reassign to GPIO_Input (M3HB)
+    PB1  - currently GPIO_Output -> reassign to TIM3_CH4 (M3HSC)
+    PB4  - currently GPIO_Output -> reassign to TIM3_CH1 (M3HSA)
+    PB11 - currently GPIO_Input  -> reassign to GPIO_Output (M3LSB)
+    PB12 - currently GPIO_Input  -> reassign to GPIO_Output (M3LSC)
+    PC13 - not used (remove or leave)
+    PC14 - not used (remove or leave)
+
+  IMPORTANT - TIM3 Partial Remap:
+    PB4=TIM3_CH1 and PB1=TIM3_CH4 require AFIO_MAPR TIM3 partial remap.
+    In CubeMX: assign PB4 -> TIM3_CH1 to trigger the remap prompt.
+    This remap also moves TIM3_CH2 to PB5 (M2LSC) - CH2 must remain unused.
