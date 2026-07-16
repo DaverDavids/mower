@@ -29,9 +29,9 @@ Key bindings (TUI mode):
   Q / Ctrl-C     quit
 
 Pin test screen (P from main):
-  Left / Right   select pin
-  Space          toggle pin high/low (PINTEST cmd - stops timer, drives GPIO)
-  H / L          force selected pin high / low
+  Up / Down      select pin
+  Space          toggle pin enable/disable (PINTEST cmd - stops timer, drives GPIO)
+  E / D          force selected pin enable / disable
   R              read back IDR of selected pin
   A              read ALL pins IDR
   Q / Esc        return to main screen
@@ -223,7 +223,7 @@ class MotorState:
 # ---------------------------------------------------------------------------
 class PinTestApp:
     """
-    Standalone fullscreen pin tester.  Navigates PIN_CATALOGUE left/right.
+    Standalone fullscreen pin tester.  Navigates PIN_CATALOGUE up/down.
     For HS-PWM pins: sends PINTEST <name> <val> which tells firmware to stop
     the timer channel, reconfigure the pin as GPIO push-pull, then drive it.
     For LS-GPIO / HALL pins: falls back to SETPINRAW / READPIN commands.
@@ -246,8 +246,10 @@ class PinTestApp:
     def _pintest(self, idx, val):
         name = self.pins[idx][0]
         ptype = self.pins[idx][2]
+        # Clear previous per-pin status
+        self.state[idx]["last_resp"] = ""
         if ptype == "HALL":
-            # Read-only: just read IDR
+            # Input-only: just read IDR
             lines = self._send(f"READPIN {name}")
             resp = " | ".join(lines)
             self.state[idx]["last_resp"] = resp
@@ -257,42 +259,52 @@ class PinTestApp:
                         self.state[idx]["idr"] = int(l.split("=")[1].split()[0])
                     except Exception:
                         pass
-            self.status = f"{name}: {resp}"
+            self.status = f"{name}: {resp} (input-only pin)"
             return
         # Output pin: use PINTEST command (firmware reconfigures as GPIO)
         lines = self._send(f"PINTEST {name} {val}")
-        resp = " | ".join(lines)
-        self.state[idx]["last_resp"] = resp
+        self.state[idx]["last_resp"] = ""
         self.state[idx]["written"] = val
         # Parse ODR/IDR from response
         for l in lines:
-            if "ODR=" in l and "IDR=" in l:
+            if l.startswith("OK ") and name in l and "state=" in l:
+                # "OK M3HSA bit=8 state=ENABLED ODR=1 IDR=1"
+                self.state[idx]["last_resp"] = l
                 try:
-                    odr = int(l.split("ODR=")[1].split()[0])
-                    idr = int(l.split("IDR=")[1].split()[0])
-                    self.state[idx]["idr"] = idr
-                    self.state[idx]["mismatch"] = (odr != idr)
+                    part = l.split("state=")[1].split()[0]
+                    odr_part = l.split("ODR=")[1].split()[0]
+                    idr_part = l.split("IDR=")[1].split()[0]
+                    self.state[idx]["idr"] = int(idr_part)
+                    self.state[idx]["mismatch"] = (int(odr_part) != int(idr_part))
                 except Exception:
                     pass
-            elif "ERR" in l:
-                self.status = f"{name}: {l}"
+                label = "enabled" if val == 1 else "disabled"
+                self.status = f"{name}: {label}  {l.strip()}"
                 return
-        self.status = f"{name} -> {val}  {resp}"
+            elif l.startswith("ERR"):
+                self.state[idx]["last_resp"] = l
+                self.status = f"{name}: {l.strip()}"
+                return
+        self.status = f"{name} -> {val}  {' | '.join(lines)}"
 
     def _read_pin(self, idx):
         name = self.pins[idx][0]
+        self.state[idx]["last_resp"] = ""
         lines = self._send(f"READPIN {name}")
-        resp = " | ".join(lines)
-        self.state[idx]["last_resp"] = resp
         for l in lines:
-            if "=" in l:
-                # "OK M2HSA=0 (OUT)" style
+            if l.startswith("OK ") and name in l:
+                self.state[idx]["last_resp"] = l
                 try:
                     part = l.split("=")[1].split()[0]
                     self.state[idx]["idr"] = int(part)
                 except Exception:
                     pass
-        self.status = f"{name} IDR: {resp}"
+                self.status = f"{name}: {l.strip()}"
+                return
+            elif l.startswith("ERR"):
+                self.state[idx]["last_resp"] = l
+                self.status = f"{name}: {l.strip()}"
+                return
 
     def _read_all(self):
         """Read IDR of every pin via individual READPIN calls."""
@@ -322,7 +334,7 @@ class PinTestApp:
                 pass
 
         safe(0, 0, "  MOCO PIN TESTER  ", curses.color_pair(3) | curses.A_BOLD)
-        safe(0, 20, "[Left/Right]navigate  [Space/H/L]drive  [R]read  [A]read all  [Q]back",
+        safe(0, 20, "[Up/Down]select  [Space]toggle  [E]nable  [D]isable  [R]read  [A]all  [Q]back",
              curses.color_pair(4))
         safe(1, 0, "-" * min(W - 1, 90), curses.color_pair(6))
 
@@ -390,10 +402,10 @@ class PinTestApp:
 
             if key in (ord('q'), ord('Q'), 27):   # Q or Esc
                 break
-            elif key == curses.KEY_LEFT:
+            elif key == curses.KEY_UP:
                 self.sel = (self.sel - 1) % len(self.pins)
                 self.status = f"Selected: {self.pins[self.sel][0]} ({self.pins[self.sel][1]})"
-            elif key == curses.KEY_RIGHT:
+            elif key == curses.KEY_DOWN:
                 self.sel = (self.sel + 1) % len(self.pins)
                 self.status = f"Selected: {self.pins[self.sel][0]} ({self.pins[self.sel][1]})"
             elif key == ord(' '):
@@ -401,9 +413,9 @@ class PinTestApp:
                 cur = self.state[self.sel]["written"]
                 nval = 0 if cur == 1 else 1
                 self._pintest(self.sel, nval)
-            elif key in (ord('h'), ord('H')):
+            elif key in (ord('e'), ord('E')):
                 self._pintest(self.sel, 1)
-            elif key in (ord('l'), ord('L')):
+            elif key in (ord('d'), ord('D')):
                 self._pintest(self.sel, 0)
             elif key in (ord('r'), ord('R')):
                 self._read_pin(self.sel)

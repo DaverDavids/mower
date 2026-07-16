@@ -14,4 +14,4 @@ C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:339:6:Mot
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:359:6:Motor_Commutate	56	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:512:6:Motor_CommutateAll	8	static
 C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:519:6:Motor_CheckStall	16	static
-C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:562:9:Motor_GetTimingStats	20	static
+C:/Users/rawdr/Documents/GitHub/mower/stm32-moco/Core/Src/motor_ctrl.c:564:9:Motor_GetTimingStats	20	static

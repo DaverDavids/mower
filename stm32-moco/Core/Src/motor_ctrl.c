@@ -268,7 +268,7 @@ void Motor_Enable(uint8_t motor_id)
         for (uint8_t i = 0; i < 6; i++) {
             if (HALL_ORDER[i] == cur_hall) { cur_pos = i; break; }
         }
-        MotorDir_t eff_dir = (motor_id == 1) ?
+        MotorDir_t eff_dir = (motor_id == 1 || motor_id == 2) ?
             (g_motor[motor_id].dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) :
             g_motor[motor_id].dir;
         ms->force_step_idx = (eff_dir == DIR_FORWARD) ?
@@ -466,12 +466,7 @@ void Motor_Commutate(uint8_t mid)
         for (uint8_t i = 0; i < 6; i++) {
             if (HALL_ORDER[i] == new_hall) { pos = i; break; }
         }
-        uint8_t effective_pos;
-        if (effective_dir == DIR_FORWARD) {
-            effective_pos = (pos + ms->commut_offset) % 6;
-        } else {
-            effective_pos = (pos + 6 - ms->commut_offset) % 6;
-        }
+        uint8_t effective_pos = (pos + ms->commut_offset) % 6;
         lookup_hall = HALL_ORDER[effective_pos];
     }
 
@@ -549,7 +544,9 @@ void Motor_CheckStall(uint8_t mid, uint32_t now_ms)
             for (uint8_t i = 0; i < 6; i++) {
                 if (HALL_ORDER[i] == ms->hall_state) { current_pos = i; break; }
             }
-            if (ms->dir == DIR_FORWARD)
+            MotorDir_t eff = (mid == 1 || mid == 2) ?
+                (ms->dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) : ms->dir;
+            if (eff == DIR_FORWARD)
                 ms->force_step_idx = (current_pos + 1) % 6;
             else
                 ms->force_step_idx = (current_pos + 5) % 6;

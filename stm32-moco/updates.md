@@ -1,90 +1,50 @@
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# okay I just now uploaded the changes... it is quite a bit better now. but still it sometimes stalls on startup and takes some pulses until it moves. do you know why?
+## Navigation fix
 
-Status: DISABLED   [E]enable  [D]disable  [S]stop all
-Dir:    FWD   [F]forward  [R]reverse
-Duty:   [\#\#\#\#\#\#\#\#\#\#\#---------]   800/1440  [Up/Dn]+/-10  [PgU/PgD]+/-100  [0]zero
-Hall:   0x5  HA=1 HB=0 HC=1
-HallSeq: 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5 1 5   (3957 ticks)  [C]clear  [M]monitor
-Ticks:  3957   [T]reset
-PhaseMap: [1,0,2]  perm 3/6  [A]next  [Z]prev
-CommutOff: 4/5  [O]next  [I]prev
---------------------------------------------------
-All: M1:DIS/F/0/off1  M2:DIS/F/800/off4  M3:DIS/F/0/off5
-GPIO: PA ODR=20FF IDR=3069  PB ODR=0410 IDR=0400
-TIM1: MOE=0 CH1 HS=off LS=off CCR=0     CH2 HS=off LS=off CCR=0     CH3 HS=off LS=off CCR=0
---------------------------------------------------
-[1/2/3]motor  [E/D]en/dis  [F/R]fwd/rev  [Up/Dn]duty  [PgU/D]duty*10
-[A/Z]phase map  [O/I]commut offset  [T]ticks  [`]timing  [~]clr timing  [C]hall  [M]monitor  [P]pin test  [S]stop  [Q]quit
-Duty 800
+In the pin-test screen, find the handler for cursor keys or `curses.KEY_LEFT` / `curses.KEY_RIGHT`. Right now left/right is apparently incrementing and decrementing the selected **row**, so change that logic to `KEY_UP => selected_index -= 1` and `KEY_DOWN => selected_index += 1`, with bounds clamp or wraparound, and remove left/right from vertical navigation.
 
-Good — I can see the updated code. The `prev_hall` fix is in  and `force_duty` no longer has the 400 floor. But the remaining startup stall issue is clear from a careful read. Here are the exact causes:
+Also update the help text on that screen so it explicitly says `Up/Down: select pin`. If you keep horizontal keys at all, reserve them for page changes or no-op them so the visual model matches the list layout.
 
-## Why It Still Pulses/Stalls on Startup
+## Control wording
 
-### Problem 1: `force_step_idx` always starts at 0, ignoring rotor position
+In the pin-test UI model, replace any user-facing `high` / `low` labels with `enable` / `disable`. That change should affect:
 
-In `Motor_Enable()` :
+- On-screen help text.
+- Button legends or key hints.
+- Status/result text.
+- Any confirmation prompt text.
 
-```c
-ms->force_step_idx = 0;  // always HALL_ORDER[0] = state 1
+Do **not** rename BLDC pin names like `M3HSA` or `M3LSA`; those are hardware names and should stay as-is. Only change the action verbs used for pin forcing.
+
+## Key bindings
+
+Bind `e` to force the selected output pin **enabled** and `d` to force it **disabled**. For hall inputs, `e` and `d` should either no-op with a status message like `input-only pin` or just trigger a read refresh, because firmware `PINTEST` refuses to drive inputs and only reports `IDR` for them.
+
+```
+If the host currently sends `PINTEST <pin> 1` and `PINTEST <pin> 0`, you can keep that transport unchanged for now and just relabel the UI as Enable/Disable. If you want the protocol itself cleaned up, that requires a firmware parser change too. 
 ```
 
-`HALL_ORDER[0]` = hall state `1`. But your rotor is sitting at hall state `0x5` when you enable. The forced sequence starts energizing the wrong phase pair for that rotor position — it may be a braking step or a backwards step depending on where hall 1 is relative to hall 5 in your motor's winding geometry. It has to "walk" through potentially several wrong steps before it stumbles onto one that actually produces forward torque, which is why you see the pulses before movement.
 
-**Fix:** Seed `force_step_idx` from the current Hall state at enable time, just like `Motor_CheckStall()` already does for recovery:
+## Status-line cleanup
 
-```c
-uint8_t current_pos = 0;
-uint8_t current_hall = Motor_ReadHall(motor_id);
-for (uint8_t i = 0; i < 6; i++) {
-    if (HALL_ORDER[i] == current_hall) { current_pos = i; break; }
-}
-// Start one step ahead in the forward direction
-ms->force_step_idx = (current_pos + 1) % 6;
-```
+Your pin-test status line should display only the response associated with the currently selected action. Since firmware replies are line-oriented and prefixed with `OK`, `ERR`, or `INFO`, the host should:
 
-This way the very first forced step is already the correct *next* phase for the rotor's actual position.
+- Clear the previous per-pin status before issuing a new command.
+- Wait for the first matching `OK <pin> ...` or `ERR ...` line.
+- Ignore unrelated `INFO ...` lines for the per-pin status widget, or route them to a separate log pane.
 
-***
+That directly addresses the “different info the more I read a pin” symptom, because the firmware emits many legitimate `INFO` lines for other commands and diagnostics. `PINTEST` itself is only supposed to yield one final `OK ...` result for the requested pin.
 
-### Problem 2: `step_timeout` is calculated from `force_duty` but the formula assumes full ARR
+## Recommended parser rule
 
-```c
-uint16_t step_timeout = 20 + (uint16_t)((DUTY_MAX - ms->force_duty) / 72);
-```
+For the host-side serial parser, treat these differently:
 
-With `force_duty = 800` and `DUTY_MAX = 1440`, that's `20 + (640/72)` = `20 + 8` = **28ms per forced step**. At 60 steps that's up to 1.68 seconds of forced open-loop stepping before it gives up. Each wrong step is holding the wrong phase energized for 28ms, which can actually push the rotor backwards or lock it depending on position — multiple wrong steps in sequence cause the "pulse" feel.
+- `OK <pin> ...` after `PINTEST` or `READPIN`: authoritative result for the selected pin.
+- `ERR ...`: show in the pin-test status line immediately.
+- `INFO ...`: append to a rolling debug log, not the selected-pin result box.
 
-This timeout is meant to handle the case where the rotor *doesn't move* (no Hall transition), but 28ms is a long time per wrong step. Reducing it to something like `10 + (DUTY_MAX - ms->force_duty) / 144` at higher duties would make bad steps shorter, though the real fix is Problem 1 above.
+If you already have a function that sends a command and blocks for a response, make it accept a predicate like “line starts with `OK M3HSA`” so unrelated traffic cannot overwrite the displayed result.
 
-***
+## Optional firmware cleanup
 
-### Problem 3: The `hall_moved` exit from forced stepping doesn't account for commut_offset
-
-When the Hall moves during forced stepping, the code jumps straight to hall-based commutation . But your motor has `commut_offset = 3` (displayed 4/5). The transition from forced-step indexing to offset-based commutation can cause a phase glitch at the handoff moment — the forced step is using the raw `COMMUT_FWD/REV` table directly, but the normal path applies the offset. These are different table lookups for the same hall state.
-
-This isn't a major issue but it can cause a single hiccup on the transition. Not a fix needed immediately, but worth noting.
-
-***
-
-## The One-Line Core Fix
-
-In `Motor_Enable()`, replace `ms->force_step_idx = 0;` with:
-
-```c
-uint8_t cur_hall = Motor_ReadHall(motor_id);
-uint8_t cur_pos = 0;
-for (uint8_t i = 0; i < 6; i++) {
-    if (HALL_ORDER[i] == cur_hall) { cur_pos = i; break; }
-}
-MotorDir_t eff_dir = (motor_id == 1) ?
-    (g_motor[motor_id].dir == DIR_FORWARD ? DIR_REVERSE : DIR_FORWARD) :
-    g_motor[motor_id].dir;
-ms->force_step_idx = (eff_dir == DIR_FORWARD) ?
-    (cur_pos + 1) % 6 : (cur_pos + 5) % 6;
-```
-
-Note you need the same M2 direction flip that the commutate path already applies, otherwise for M2 the forced sequence walks the wrong way. That's the complete fix — the stall recovery code in `Motor_CheckStall()` already does this correctly; `Motor_Enable()` just needs to match it.
-
+If you want the protocol to match the new UI language, update `usb_cmd.c` so `PINTEST` accepts `E/D` or `ENABLE/DISABLE` in addition to `0/1`, then map those to driven GPIO set/reset internally. Also change the reply string from `wrote=%d` to something like `state=ENABLED` or `state=DISABLED`; that is a firmware enhancement, not required for the host navigation bug.

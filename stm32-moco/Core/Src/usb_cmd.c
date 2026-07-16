@@ -1004,16 +1004,18 @@ static void dispatch(char *line)
         USBCMD_Send("OK TIM1REGS\r\n");
 
     } else if (strcmp(tok, "PINTEST") == 0) {
-        /* PINTEST <name> <0|1>
+        /* PINTEST <name> <0|1|E|D|ENABLE|DISABLE>
          * Stops all motors, reconfigures the named pin as GPIO push-pull
          * (stopping its timer channel if it is a PWM pin), drives it to
          * the requested level, then reads back IDR.
          * NOTE: after PINTEST the affected timer channel is STOPPED.
          * Reboot or re-call Motor_Init() to restore PWM. */
         char *sn=strtok(NULL," \t"),*sv=strtok(NULL," \t");
-        if(!sn||!sv){USBCMD_Send("ERR USAGE: PINTEST <name> <0|1>\r\n");return;}
-        int val=atoi(sv);
-        if(val!=0&&val!=1){USBCMD_Send("ERR val must be 0 or 1\r\n");return;}
+        if(!sn||!sv){USBCMD_Send("ERR USAGE: PINTEST <name> <0|1|E|D|ENABLE|DISABLE>\r\n");return;}
+        int val;
+        if(strcmp(sv,"0")==0||strcmp(sv,"D")==0||strcmp(sv,"DISABLE")==0) val=0;
+        else if(strcmp(sv,"1")==0||strcmp(sv,"E")==0||strcmp(sv,"ENABLE")==0) val=1;
+        else {USBCMD_Send("ERR val must be 0/1/E/D/ENABLE/DISABLE\r\n");return;}
         const PinEntry_t *p=find_pin(sn);
         if(!p){
             snprintf(tx_scratch,sizeof(tx_scratch),"ERR UNKNOWN_PIN: %s\r\n",sn);
@@ -1041,9 +1043,10 @@ static void dispatch(char *line)
         uint8_t bit=pin_bit(p->pin);
         uint32_t odr=(p->port->ODR>>bit)&1;
         uint32_t idr=(p->port->IDR>>bit)&1;
+        const char *state_s = val ? "ENABLED" : "DISABLED";
         snprintf(tx_scratch,sizeof(tx_scratch),
-            "OK %s bit=%u wrote=%d ODR=%lu IDR=%lu%s\r\n",
-            p->name, bit, val, odr, idr,
+            "OK %s bit=%u state=%s ODR=%lu IDR=%lu%s\r\n",
+            p->name, bit, state_s, odr, idr,
             (odr!=idr) ? " MISMATCH" : "");
         USBCMD_Send(tx_scratch);
 
@@ -1252,7 +1255,7 @@ static void dispatch(char *line)
         USBCMD_Send("INFO Motor: SET DIR EN DIS STATUS HALL HALLSEQ HALLMONITOR CLEARRING TICKS RESETTICKS MAP GETMAP COMMUTOFFSET TIMING CLEARTIMING\r\n");
         USBCMD_Send("INFO GPIO:  SETPIN READPIN PINS ODRDUMP REGS CRLCONF SETBSRR SETPINRAW AFIO\r\n");
         USBCMD_Send("INFO Debug: TIM1REGS\r\n");
-        USBCMD_Send("INFO Test:  PINTEST <name> <0|1>  PINTESTALL\r\n");
+        USBCMD_Send("INFO Test:  PINTEST <name> <0|1|E|D|ENABLE|DISABLE>  PINTESTALL\r\n");
         USBCMD_Send("INFO         PINTEST stops motors, releases timer channel, drives pin as GPIO\r\n");
         USBCMD_Send("INFO         PINTESTALL reads IDR of all pins without driving anything\r\n");
         USBCMD_Send("INFO System: VERSION  HELP  TUI (return to dashboard)  RAW (stay in cmd)  PING  STOP\r\n");
